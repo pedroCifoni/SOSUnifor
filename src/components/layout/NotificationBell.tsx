@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, CheckCircle2, Send, SquarePlus, type LucideIcon } from 'lucide-react'
+import { Bell, CheckCircle2, Siren, Send, SquarePlus, type LucideIcon } from 'lucide-react'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
 import type { TipoNotificacao } from '@/models/notificacao'
 import { tempoRelativo } from '@/utils/format'
@@ -8,6 +8,7 @@ const ICONES: Record<TipoNotificacao, LucideIcon> = {
   criada: SquarePlus,
   encaminhada: Send,
   concluida: CheckCircle2,
+  alerta: Siren,
 }
 
 export function NotificationBell() {
@@ -49,7 +50,11 @@ export function NotificationBell() {
                   <li key={n.id} className={`flex gap-3 px-4 py-3 ${n.lida ? '' : 'bg-brand-50/60'}`}>
                     <span
                       className={`mt-0.5 grid size-8 shrink-0 place-items-center rounded-lg ${
-                        n.tipo === 'concluida' ? 'bg-emerald-100 text-emerald-700' : 'bg-brand-50 text-brand-500'
+                        n.tipo === 'concluida'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : n.tipo === 'alerta'
+                            ? 'bg-sos-100 text-sos-700'
+                            : 'bg-brand-50 text-brand-500'
                       }`}
                     >
                       <Icone size={16} />

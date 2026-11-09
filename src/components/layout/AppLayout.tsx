@@ -1,18 +1,19 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, Menu, User, Users, ShieldAlert, Wrench, X } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, Wrench, X } from 'lucide-react'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { useAuth } from '@/hooks/useAuth'
 import { iniciais } from '@/utils/format'
 
 const TITULOS: Record<string, string> = {
   '/': 'Central de Reportes',
-  '/novo-chamado': 'Novo Chamado',
+  '/novo-chamado': 'Suporte Técnico',
   '/nova-denuncia': 'Nova Denúncia',
   '/minhas-ocorrencias': 'Minhas Ocorrências',
   '/perfil': 'Meu Perfil',
   '/admin': 'Painel de Monitoramento',
   '/admin/usuarios': 'Usuários',
+  '/admin/areas-campus': 'Áreas do Campus',
 }
 
 export function AppLayout() {
@@ -26,14 +27,19 @@ export function AppLayout() {
   const isHome = pathname === '/'
   const links = [
     { to: '/', label: 'Tela principal', icon: Home },
-    { to: '/novo-chamado', label: 'Novo Chamado', icon: Wrench },
-    { to: '/nova-denuncia', label: 'Nova Denúncia', icon: ShieldAlert },
-    { to: '/minhas-ocorrencias', label: 'Minhas Ocorrências', icon: ClipboardList },
+    ...(usuario.perfil === 'usuario'
+      ? [
+          { to: '/novo-chamado', label: 'Suporte técnico', icon: Wrench },
+          { to: '/nova-denuncia', label: 'Nova Denúncia', icon: ShieldAlert },
+          { to: '/minhas-ocorrencias', label: 'Minhas Ocorrências', icon: ClipboardList },
+        ]
+      : []),
     { to: '/perfil', label: 'Meu Perfil', icon: User },
     ...(usuario.perfil === 'admin'
       ? [
           { to: '/admin', label: 'Painel de Monitoramento', icon: LayoutDashboard },
           { to: '/admin/usuarios', label: 'Usuários', icon: Users },
+          { to: '/admin/areas-campus', label: 'Áreas do Campus', icon: MapPinned },
         ]
       : []),
   ]

@@ -1,71 +1,36 @@
-import type { Ocorrencia, TipoOcorrencia } from '@/models/ocorrencia'
+import type { Ocorrencia } from '@/models/ocorrencia'
 import { dataHora } from '@/utils/format'
 
-const SETOR: Record<TipoOcorrencia, string> = {
-  manutencao: 'Divisão de Manutenção',
-  sos: 'Central de Segurança',
-  denuncia: 'Ouvidoria e Segurança',
+type Etapa = { titulo: string; detalhe: string; estado: 'feito' | 'atual' }
+
+function criarTitulo(tipo: string) {
+  return tipo.replaceAll('_', ' ').replace(/^./, (letra) => letra.toUpperCase())
 }
 
-type Etapa = { titulo: string; detalhe: string; estado: 'feito' | 'atual' | 'pendente' }
-
-function etapas(o: Ocorrencia): Etapa[] {
-  const encaminhado = o.status !== 'pendente'
-  const concluido = o.status === 'concluido'
-  const encaminhadoEm = new Date(new Date(o.criadoEm).getTime() + 78 * 60_000).toISOString()
-
-  return [
-    {
-      titulo: 'Registrado pelo usuário',
-      detalhe: `${dataHora(o.criadoEm)} · Por ${o.solicitante}`,
-      estado: 'feito',
-    },
-    {
-      titulo: 'Encaminhado ao setor',
-      detalhe: encaminhado ? `${dataHora(encaminhadoEm)} · ${SETOR[o.tipo]}` : 'Aguardando triagem',
-      estado: encaminhado ? 'feito' : 'atual',
-    },
-    {
-      titulo: 'Em Atendimento',
-      detalhe: o.status === 'em_andamento' ? 'Técnico designado no local' : concluido ? 'Atendimento realizado' : 'Aguardando atendimento',
-      estado: concluido ? 'feito' : o.status === 'em_andamento' ? 'atual' : 'pendente',
-    },
-    {
-      titulo: 'Concluído',
-      detalhe: concluido ? 'Ocorrência resolvida' : 'Pendente de resolução',
-      estado: concluido ? 'feito' : 'pendente',
-    },
+function etapas(ocorrencia: Ocorrencia): Etapa[] {
+  const eventos = ocorrencia.eventos ?? [
+    { tipo: 'criada', descricao: `Registrado por ${ocorrencia.solicitante}.`, criadoEm: ocorrencia.criadoEm },
   ]
+  return eventos.map((evento, indice) => ({
+    titulo: criarTitulo(evento.tipo),
+    detalhe: `${dataHora(evento.criadoEm)} · ${evento.descricao}`,
+    estado: indice === eventos.length - 1 && !['concluido', 'cancelado'].includes(evento.tipo) ? 'atual' : 'feito',
+  }))
 }
 
-const ponto = {
-  feito: 'bg-emerald-500 border-emerald-500',
-  atual: 'bg-brand-500 border-brand-500',
-  pendente: 'bg-white border-line',
-}
+const ponto = { feito: 'bg-emerald-500 border-emerald-500', atual: 'bg-brand-500 border-brand-500' }
 
 export function Timeline({ ocorrencia }: { ocorrencia: Ocorrencia }) {
   const lista = etapas(ocorrencia)
   return (
     <ol className="mt-4 space-y-0">
-      {lista.map((e, i) => (
-        <li key={e.titulo} className="relative flex gap-3 pb-4 last:pb-0">
-          {i < lista.length - 1 && (
-            <span
-              aria-hidden
-              className={`absolute left-[5px] top-3 h-full w-0.5 ${e.estado === 'feito' ? 'bg-emerald-300' : 'bg-line'}`}
-            />
-          )}
-          <span className={`relative mt-1 size-3 shrink-0 rounded-full border-2 ${ponto[e.estado]}`} />
+      {lista.map((etapa, indice) => (
+        <li key={`${etapa.titulo}-${indice}`} className="relative flex gap-3 pb-4 last:pb-0">
+          {indice < lista.length - 1 && <span aria-hidden className="absolute left-[5px] top-3 h-full w-0.5 bg-emerald-300" />}
+          <span className={`relative mt-1 size-3 shrink-0 rounded-full border-2 ${ponto[etapa.estado]}`} />
           <div className="min-w-0">
-            <p
-              className={`text-sm font-semibold leading-tight ${
-                e.estado === 'atual' ? 'text-brand-500' : e.estado === 'pendente' ? 'text-muted' : 'text-brand-900'
-              }`}
-            >
-              {e.titulo}
-            </p>
-            <p className="text-xs text-muted">{e.detalhe}</p>
+            <p className={`text-sm font-semibold leading-tight ${etapa.estado === 'atual' ? 'text-brand-500' : 'text-brand-900'}`}>{etapa.titulo}</p>
+            <p className="text-xs text-muted">{etapa.detalhe}</p>
           </div>
         </li>
       ))}

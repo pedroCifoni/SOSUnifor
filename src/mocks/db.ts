@@ -49,7 +49,7 @@ export const ocorrenciasMock: Ocorrencia[] = [
     titulo: 'Ar-condicionado vazando',
     local: 'Bloco D, Sala D3',
     tipo: 'manutencao',
-    status: 'em_andamento',
+    status: 'em_atendimento',
     responsavelId: 'u3',
     solicitante: 'Eduardo Costa',
     autorId: 'u1',

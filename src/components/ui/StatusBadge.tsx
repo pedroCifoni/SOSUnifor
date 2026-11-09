@@ -2,7 +2,9 @@ import { STATUS_LABEL, type StatusOcorrencia } from '@/models/ocorrencia'
 
 const styles: Record<StatusOcorrencia, string> = {
   pendente: 'bg-sos-50 text-sos-700',
-  em_andamento: 'bg-amber-100 text-amber-700',
+  aguardando_aceite: 'bg-amber-100 text-amber-700',
+  em_atendimento: 'bg-brand-50 text-brand-500',
+  cancelado: 'bg-slate-100 text-slate-600',
   concluido: 'bg-emerald-100 text-emerald-700',
 }
 

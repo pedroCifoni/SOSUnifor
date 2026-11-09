@@ -1,8 +1,9 @@
-export type Perfil = 'usuario' | 'seguranca' | 'admin'
+export type Perfil = 'usuario' | 'seguranca' | 'tecnico' | 'admin'
 
 export const PERFIL_LABEL: Record<Perfil, string> = {
   usuario: 'Usuário',
   seguranca: 'Segurança',
+  tecnico: 'Técnico de Informática',
   admin: 'Administrador',
 }
 

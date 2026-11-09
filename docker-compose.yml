@@ -1,0 +1,31 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+
+    container_name: unisos-postgres
+
+    restart: unless-stopped
+
+    environment:
+      POSTGRES_USER: unisos
+      POSTGRES_PASSWORD: uni12345
+      POSTGRES_DB: unisos
+
+    ports:
+      - "${POSTGRES_PORT}:5432"
+
+    volumes:
+      - unisos_postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER} -d postgres"
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  unisos_postgres_data:

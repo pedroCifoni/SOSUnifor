@@ -1,52 +1,61 @@
-# Central de Reportes · SOS UNIFOR (front-end)
+# Uni SOS
 
-Aplicação web para registro e acompanhamento de ocorrências no campus (SOS, chamados de manutenção e denúncias), com visão de usuário e visão de administrador.
+Aplicação para abertura e acompanhamento de chamados de manutenção, denúncias e alertas SOS no campus. Este repositório contém o front-end e o back-end.
 
-React 19 · TypeScript · Tailwind CSS v4 · Vite · React Router
+## Executar localmente (PowerShell)
 
-## Como rodar
+Use três terminais, a partir da raiz do repositório.
 
+1. Configure e inicie o PostgreSQL:
+
+```powershell
+Copy-Item .env.example .env
+docker compose up -d
 ```
+
+2. Configure e inicie a API:
+
+```powershell
+cd backend\services\auth-service
+Copy-Item .env.example .env
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+3. Na raiz do repositório, instale e inicie o front-end:
+
+```powershell
 npm install --legacy-peer-deps
 npm run dev
 ```
 
-Sem `VITE_API_URL` o app roda com dados mockados. Para apontar para o backend, copie `.env.example` para `.env` e preencha a URL.
+Abra `http://localhost:5173`. O front-end usa `http://127.0.0.1:8000` como API por padrão. Configure `VITE_API_URL` no `.env` da raiz para usar outra URL.
 
-Logins de teste (mock, senha `123456`):
+## Contas de desenvolvimento
 
-| Perfil  | E-mail                    |
-| ------- | ------------------------- |
-| Usuário | `eduardo.costa@unifor.br` |
-| Admin   | `admin@unifor.br`         |
+A API cria estas contas quando ainda não existem, todas com senha `123456`:
 
-## Arquitetura
+| Perfil | E-mail |
+| --- | --- |
+| Usuário | eduardo.costa@unifor.br |
+| Administrador | admin@unifor.br |
+| Segurança | seguranca@unifor.br |
+| Técnico | tecnico@unifor.br |
 
-```
-src/
-  api/         cliente HTTP (fetch + JWT), config, armazenamento do token
-  models/      tipos e contratos de domínio (Usuario, Ocorrencia, Seguranca)
-  services/    regras de acesso a dados; único lugar que fala com a API ou o mock
-  mocks/       dados e JWT de mentira, usados quando não há backend
-  contexts/    estado global (autenticação)
-  hooks/       hooks reutilizáveis (useAuth, useHoldPress)
-  routes/      rotas e guardas de acesso por perfil
-  components/  UI reutilizável e layout
-  pages/       telas
-  utils/       funções puras (formatação, JWT)
-```
+## API
 
-Fluxo: `page → service → api (ou mock)`. As páginas nunca chamam `fetch` nem leem o mock diretamente.
+A documentação interativa está em `http://127.0.0.1:8000/docs`. A API oferece autenticação JWT, gestão de usuários, ocorrências, notificações, áreas do campus e envio de anexos. O servidor valida as permissões em cada rota.
 
-## Autenticação (JWT)
+Não existe cadastro público: um administrador autenticado cria as contas pelo painel administrativo. A segurança acessa os atendimentos encaminhados para sua equipe.
 
-A autenticação e a autorização são responsabilidade do **backend**. O front apenas guarda o token e o envia.
+## Estrutura
 
-1. `POST /auth/login` com `{ email, senha }` retorna `{ token }`.
-2. O token (JWT) carrega as claims `sub`, `name`, `email`, `role` (`usuario` | `admin`), `iat` e `exp`.
-3. O front decodifica o payload só para exibir o usuário e saber a expiração. **Não valida a assinatura**: isso é feito no servidor.
-4. Toda requisição leva `Authorization: Bearer <token>` (`api/client.ts`).
-5. Resposta `401` ou token expirado encerra a sessão e volta para `/login`.
-6. `ProtectedRoute` esconde telas por perfil, mas é só experiência de uso. O backend deve validar o perfil em cada endpoint.
+- `src/`: aplicação React, páginas, componentes, serviços e cliente da API.
+- `backend/services/auth-service/`: API FastAPI e configuração do banco.
+- `docker-compose.yml`: banco PostgreSQL para desenvolvimento local.
+- `docs/`: documentação do projeto.
 
+## Mapa do campus
 
+Entre como administrador e abra **Áreas do Campus** no menu. Cadastre primeiro o polígono do limite geral da Unifor e, em seguida, os polígonos dos blocos, portarias e estacionamentos. O SOS usa o GPS do dispositivo e a API identifica o local pelas áreas cadastradas.

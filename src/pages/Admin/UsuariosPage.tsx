@@ -82,20 +82,14 @@ export function UsuariosPage() {
   async function salvar() {
     setSalvando(true)
     try {
-      for (const c of mudancas.criados) {
-        await usuarioService.criar({ nome: c.nome, email: c.email, perfil: c.perfil, senha: c.senha })
-      }
-      for (const e of mudancas.editados) {
-        await usuarioService.atualizar(e.id, { nome: e.nome, email: e.email, perfil: e.perfil, senha: e.senha })
-      }
-      for (const x of mudancas.excluidos) {
-        await usuarioService.excluir(x.id)
-      }
+      await usuarioService.salvarLote({
+        criacoes: mudancas.criados.map((usuario) => ({ nome: usuario.nome, email: usuario.email, perfil: usuario.perfil, senha: usuario.senha })),
+        atualizacoes: mudancas.editados.map((usuario) => ({ id: usuario.id, nome: usuario.nome, email: usuario.email, perfil: usuario.perfil, senha: usuario.senha })),
+        exclusoes: mudancas.excluidos.map((usuario) => usuario.id),
+      })
       toast.sucesso(mudancas.total === 1 ? 'Alteração salva.' : `${mudancas.total} alterações salvas.`)
     } catch (err) {
-      toast.erro(
-        `${err instanceof Error ? err.message : 'Não foi possível salvar.'} As alterações anteriores a este erro já foram salvas.`,
-      )
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível salvar. Nenhuma alteração foi aplicada.')
     } finally {
       await carregar()
       setSalvando(false)

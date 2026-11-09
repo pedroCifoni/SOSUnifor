@@ -23,10 +23,10 @@ export function SegurancaHomePage() {
     void carregar()
   }, [carregar, revisao])
 
-  async function concluir(id: string) {
+  async function atualizarAtendimento(id: string, status: 'em_atendimento' | 'concluido') {
     try {
-      await ocorrenciaService.atualizarStatus(id, 'concluido', usuario?.id)
-      toast.sucesso('Atendimento concluído.')
+      await ocorrenciaService.atualizarStatus(id, status)
+      toast.sucesso(status === 'em_atendimento' ? 'Atendimento aceito.' : 'Atendimento concluído.')
       setSelecionada(null)
       void carregar()
     } catch {
@@ -133,7 +133,9 @@ export function SegurancaHomePage() {
           acao={
             selecionada.status === 'concluido'
               ? undefined
-              : { label: 'Concluir atendimento', onClick: () => void concluir(selecionada.id) }
+              : selecionada.status === 'aguardando_aceite'
+                ? { label: 'Aceitar atendimento', onClick: () => void atualizarAtendimento(selecionada.id, 'em_atendimento') }
+                : { label: 'Concluir atendimento', onClick: () => void atualizarAtendimento(selecionada.id, 'concluido') }
           }
         />
       )}

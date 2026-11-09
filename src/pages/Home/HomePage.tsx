@@ -11,12 +11,27 @@ import { ENCAMINHAR_LABEL, type Ocorrencia } from '@/models/ocorrencia'
 import type { Usuario } from '@/models/usuario'
 import { ocorrenciaService } from '@/services/ocorrenciaService'
 import { usuarioService } from '@/services/usuarioService'
+import { areaCampusService } from '@/services/areaCampusService'
 
 const atalhos = [
   { to: '/novo-chamado', label: 'Manutenção', icon: Wrench },
   { to: '/nova-denuncia', label: 'Denúncia', icon: ShieldAlert },
   { to: '/minhas-ocorrencias', label: 'Acompanhar', icon: ClipboardList },
 ]
+
+function obterLocalizacaoAtual(): Promise<GeolocationPosition> {
+  return new Promise((resolver, rejeitar) => {
+    if (!navigator.geolocation) {
+      rejeitar(new Error('Seu navegador não oferece localização.'))
+      return
+    }
+    navigator.geolocation.getCurrentPosition(resolver, rejeitar, {
+      enableHighAccuracy: true,
+      timeout: 10000,
+      maximumAge: 15000,
+    })
+  })
+}
 
 export function HomePage() {
   const { usuario } = useAuth()
@@ -25,6 +40,7 @@ export function HomePage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([])
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
   const [segurancas, setSegurancas] = useState<Usuario[]>([])
+  const [tecnicos, setTecnicos] = useState<Usuario[]>([])
   const navigate = useNavigate()
 
   const atendimento = usuario?.perfil === 'admin'
@@ -53,17 +69,37 @@ export function HomePage() {
   }, [carregar, revisao])
 
   useEffect(() => {
-    if (atendimento) void usuarioService.listarSegurancas().then(setSegurancas)
+    if (atendimento) {
+      void usuarioService.listarSegurancas().then(setSegurancas)
+      void usuarioService.listarTecnicos().then(setTecnicos)
+    }
   }, [atendimento])
 
   const acionarSos = useCallback(async () => {
     if (!usuario) return
     try {
+      let latitude: number | undefined
+      let longitude: number | undefined
+      let precisaoMetros: number | undefined
+      let local = 'Localização não obtida'
+      try {
+        const posicao = await obterLocalizacaoAtual()
+        latitude = posicao.coords.latitude
+        longitude = posicao.coords.longitude
+        precisaoMetros = posicao.coords.accuracy
+        const localizacao = await areaCampusService.identificar(latitude, longitude)
+        if (!localizacao.dentroCampus) {
+          toast.erro('Você está muito longe do campus para ativar o SOS. Em emergência, ligue para 190.')
+          return
+        }
+        local = localizacao.local
+      } catch {
+        toast.info('Não foi possível obter o GPS. O SOS será enviado para avaliação do administrador.')
+      }
       const sos = await ocorrenciaService.criar(
-        { titulo: 'Acionamento de Emergência', local: 'Bloco D · Próx. Entrada principal', tipo: 'sos' },
-        usuario,
+        { titulo: 'Acionamento de Emergência', local, tipo: 'sos', latitude, longitude, precisaoMetros },
       )
-      toast.sucesso('SOS acionado. A segurança foi alertada.')
+      toast.sucesso('SOS acionado. O administrador foi alertado.')
       navigate(`/sos/${sos.id}`)
     } catch {
       toast.erro('Não foi possível acionar o SOS. Ligue para a Segurança.')
@@ -83,6 +119,7 @@ export function HomePage() {
         <p className="text-sm text-muted">Precisa de ajuda imediata no campus?</p>
       </section>
 
+      {!atendimento && (
       <section className="flex flex-col items-center gap-3 py-2">
         <button
           onPointerDown={iniciar}
@@ -102,6 +139,7 @@ export function HomePage() {
         </button>
         <p className="text-xs font-semibold text-sos-500">Pressione por 2 segundos para acionar a segurança</p>
       </section>
+      )}
 
       <section className="grid grid-cols-3 gap-3">
         {atalhos.map(({ to, label, icon: Icon }) => (
@@ -167,7 +205,7 @@ export function HomePage() {
         <OcorrenciaModal
           ocorrencia={selecionada}
           onClose={() => setSelecionada(null)}
-          destinos={atendimento && selecionada.status === 'pendente' ? segurancas : undefined}
+          destinos={atendimento && selecionada.status === 'pendente' ? (selecionada.tipo === 'manutencao' ? tecnicos : segurancas) : undefined}
           acao={
             atendimento && selecionada.status === 'pendente'
               ? { label: ENCAMINHAR_LABEL[selecionada.tipo], onClick: (destinoId) => void encaminhar(selecionada.id, destinoId) }

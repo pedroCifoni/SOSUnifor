@@ -77,7 +77,7 @@ export function UsuarioFormModal({ usuario, perfilTravado, onClose, onSubmit }: 
 
         <fieldset disabled={perfilTravado}>
           <legend className="mb-1.5 text-xs font-semibold text-brand-900">Perfil</legend>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
             {(Object.keys(PERFIL_LABEL) as Perfil[]).map((p) => (
               <label
                 key={p}

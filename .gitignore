@@ -82,3 +82,12 @@ Thumbs.db
 
 # Claude Code local files
 .claude/settings.local.json
+
+# Python backend
+.venv/
+__pycache__/
+*.pyc
+uploads/
+
+# Local npm cache
+.npm-cache/

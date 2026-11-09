@@ -6,7 +6,7 @@ export interface Anexo {
 
 export type TipoOcorrencia = 'sos' | 'manutencao' | 'denuncia'
 
-export type StatusOcorrencia = 'pendente' | 'em_andamento' | 'concluido'
+export type StatusOcorrencia = 'pendente' | 'aguardando_aceite' | 'em_atendimento' | 'concluido' | 'cancelado'
 
 export interface Ocorrencia {
   id: string
@@ -17,10 +17,20 @@ export interface Ocorrencia {
   tipo: TipoOcorrencia
   status: StatusOcorrencia
   solicitante: string
-  autorId: string
+  autorId?: string
   anonima?: boolean
   anexos?: Anexo[]
   responsavelId?: string
+  latitude?: number
+  longitude?: number
+  precisaoMetros?: number
+  criadoEm: string
+  eventos?: EventoOcorrencia[]
+}
+
+export interface EventoOcorrencia {
+  tipo: string
+  descricao: string
   criadoEm: string
 }
 
@@ -30,12 +40,17 @@ export interface NovaOcorrencia {
   local: string
   tipo: TipoOcorrencia
   anonima?: boolean
-  anexos?: Anexo[]
+  anexos?: File[]
+  latitude?: number
+  longitude?: number
+  precisaoMetros?: number
 }
 
 export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
   pendente: 'Pendente',
-  em_andamento: 'Em andamento',
+  aguardando_aceite: 'Aguardando aceite',
+  em_atendimento: 'Em atendimento',
+  cancelado: 'Cancelado',
   concluido: 'Concluído',
 }
 

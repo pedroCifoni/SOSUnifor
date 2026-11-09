@@ -5,6 +5,7 @@ import { StatusBadge } from '@/components/ui/StatusBadge'
 import { TIPO_LABEL, type Ocorrencia, type TipoOcorrencia } from '@/models/ocorrencia'
 import type { Usuario } from '@/models/usuario'
 import { dataHora } from '@/utils/format'
+import { http } from '@/api/client'
 
 const ICONES: Record<TipoOcorrencia, LucideIcon> = {
   manutencao: Wrench,
@@ -26,6 +27,30 @@ function Campo({ label, children }: { label: string; children: ReactNode }) {
       <dd className="mt-0.5 text-sm text-brand-900">{children}</dd>
     </div>
   )
+}
+
+function AnexoProtegido({ anexo }: { anexo: NonNullable<Ocorrencia['anexos']>[number] }) {
+  const [urlTemporaria, setUrlTemporaria] = useState<string | null>(null)
+
+  useEffect(() => {
+    let ativa = true
+    let urlCriada: string | null = null
+    if (!anexo.url) return
+    void http.baixarArquivo(anexo.url).then((arquivo) => {
+      urlCriada = URL.createObjectURL(arquivo)
+      if (ativa) setUrlTemporaria(urlCriada)
+      else URL.revokeObjectURL(urlCriada)
+    }).catch(() => ativa && setUrlTemporaria(null))
+    return () => {
+      ativa = false
+      if (urlCriada) URL.revokeObjectURL(urlCriada)
+    }
+  }, [anexo.url])
+
+  if (anexo.tipo?.startsWith('image/') && urlTemporaria) {
+    return <img src={urlTemporaria} alt={anexo.nome} className="h-36 w-full object-cover" />
+  }
+  return <div className="grid h-36 place-items-center gap-1 px-3 text-center text-xs text-muted"><FileText size={24} className="mx-auto" />{anexo.nome}</div>
 }
 
 export function OcorrenciaModal({ ocorrencia: o, onClose, acao, destinos }: OcorrenciaModalProps) {
@@ -104,22 +129,7 @@ export function OcorrenciaModal({ ocorrencia: o, onClose, acao, destinos }: Ocor
               <ul className="grid grid-cols-2 gap-3">
                 {o.anexos.map((a, i) => (
                   <li key={`${a.nome}-${i}`} className="overflow-hidden rounded-xl border border-line">
-                    {a.url && a.tipo?.startsWith('image/') ? (
-                      <a href={a.url} target="_blank" rel="noreferrer">
-                        <img src={a.url} alt={a.nome} className="h-36 w-full object-cover" />
-                      </a>
-                    ) : (
-                      <div className="grid h-36 place-items-center gap-1 px-3 text-center text-xs text-muted">
-                        <FileText size={24} className="mx-auto" />
-                        {a.url ? (
-                          <a href={a.url} target="_blank" rel="noreferrer" className="break-all font-semibold text-brand-500">
-                            {a.nome}
-                          </a>
-                        ) : (
-                          <span className="break-all">{a.nome} (pré-visualização indisponível)</span>
-                        )}
-                      </div>
-                    )}
+                    {a.url ? <AnexoProtegido anexo={a} /> : <div className="grid h-36 place-items-center px-3 text-center text-xs text-muted">{a.nome} (pré-visualização indisponível)</div>}
                   </li>
                 ))}
               </ul>

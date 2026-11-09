@@ -1,9 +1,8 @@
-import { simulateRequest } from '@/api/client'
-import { segurancasMock } from '@/mocks/db'
+import { http } from '@/api/client'
 import type { Seguranca } from '@/models/seguranca'
 
 export const segurancaService = {
   listarNotificados(): Promise<Seguranca[]> {
-    return simulateRequest(() => segurancasMock.map((s) => ({ ...s })), 600)
+    return http.get<Seguranca[]>('/segurancas/notificadas')
   },
 }
