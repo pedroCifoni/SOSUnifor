@@ -45,6 +45,8 @@ secrets/
 *.db
 *.db-journal
 *.sql
+!backend/services/auth-service/seed_unifor.sql
+!backend/services/auth-service/migrar_chamados_para_seguranca.sql
 *.dump
 *.bak
 prisma/*.db
