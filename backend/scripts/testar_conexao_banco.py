@@ -1,6 +1,6 @@
 """Confere se a API consegue se conectar ao banco configurado em DATABASE_URL.
 
-Uso, a partir de backend/services/auth-service:
+Uso, a partir de backend/:
     python -m scripts.testar_conexao_banco
 """
 

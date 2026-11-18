@@ -3,7 +3,7 @@
 As áreas importadas nunca são marcadas como limite do campus: um administrador
 deve revisar e ativar esse limite no painel antes de bloquear SOS externo.
 
-Uso, a partir de backend/services/auth-service:
+Uso, a partir de backend/:
     python -m scripts.importar_areas_unifor_osm
 """
 
