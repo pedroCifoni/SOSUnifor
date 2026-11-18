@@ -602,12 +602,11 @@ def encaminhar_ocorrencia(
     responsavel = banco.get(Usuario, responsavel_id)
     if ocorrencia is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Ocorrência não encontrada.")
-    perfil_responsavel_necessario = "tecnico" if ocorrencia.tipo == "manutencao" else "seguranca"
-    nome_responsavel_necessario = "técnico" if perfil_responsavel_necessario == "tecnico" else "segurança"
-    if responsavel is None or not responsavel.ativo or responsavel.tipo_usuario != perfil_responsavel_necessario:
+    # Todas as ocorrências, inclusive chamados de manutenção, são atendidas pela Equipe de Segurança.
+    if responsavel is None or not responsavel.ativo or responsavel.tipo_usuario != "seguranca":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Responsável {nome_responsavel_necessario} inválido.",
+            detail="Responsável da segurança inválido.",
         )
     ocorrencia.responsavel_id = responsavel.id
     ocorrencia.status = "aguardando_aceite"
@@ -618,7 +617,7 @@ def encaminhar_ocorrencia(
         f"Encaminhada para {responsavel.nome}; aguardando aceite do atendimento.",
         _.id,
     )
-    titulo_encaminhamento = "Chamado técnico encaminhado para você" if ocorrencia.tipo == "manutencao" else "Ocorrência encaminhada para você"
+    titulo_encaminhamento = "Chamado de manutenção encaminhado para você" if ocorrencia.tipo == "manutencao" else "Ocorrência encaminhada para você"
     criar_notificacoes(banco, [responsavel.id], "encaminhada", titulo_encaminhamento, f"{ocorrencia.titulo} · {ocorrencia.local}", ocorrencia.id)
     criar_notificacoes(banco, [ocorrencia.autor_id], "encaminhada", "Seu chamado foi encaminhado", f"{ocorrencia.protocolo} · aguardando aceite da equipe", ocorrencia.id)
     banco.commit()

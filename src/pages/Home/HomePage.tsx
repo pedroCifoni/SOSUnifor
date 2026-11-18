@@ -19,13 +19,19 @@ const atalhos = [
   { to: '/minhas-ocorrencias', label: 'Acompanhar', icon: ClipboardList },
 ]
 
-function obterLocalizacaoAtual(): Promise<GeolocationPosition> {
+// Enquanto o sistema é testado fora do campus, o SOS usa sempre um ponto fixo dentro da UNIFOR (Bloco C)
+// e não pede a localização ao navegador. Para usar o GPS real, defina VITE_SOS_USAR_GPS=true.
+const USAR_GPS_REAL = import.meta.env.VITE_SOS_USAR_GPS === 'true'
+const POSICAO_FIXA_UNIFOR = { latitude: -3.7697319, longitude: -38.4812157, accuracy: 10 }
+
+function obterLocalizacaoAtual(): Promise<Pick<GeolocationCoordinates, 'latitude' | 'longitude' | 'accuracy'>> {
+  if (!USAR_GPS_REAL) return Promise.resolve(POSICAO_FIXA_UNIFOR)
   return new Promise((resolver, rejeitar) => {
     if (!navigator.geolocation) {
       rejeitar(new Error('Seu navegador não oferece localização.'))
       return
     }
-    navigator.geolocation.getCurrentPosition(resolver, rejeitar, {
+    navigator.geolocation.getCurrentPosition((posicao) => resolver(posicao.coords), rejeitar, {
       enableHighAccuracy: true,
       timeout: 10000,
       maximumAge: 15000,
@@ -40,7 +46,6 @@ export function HomePage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([])
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
   const [segurancas, setSegurancas] = useState<Usuario[]>([])
-  const [tecnicos, setTecnicos] = useState<Usuario[]>([])
   const navigate = useNavigate()
 
   const atendimento = usuario?.perfil === 'admin'
@@ -71,7 +76,6 @@ export function HomePage() {
   useEffect(() => {
     if (atendimento) {
       void usuarioService.listarSegurancas().then(setSegurancas)
-      void usuarioService.listarTecnicos().then(setTecnicos)
     }
   }, [atendimento])
 
@@ -84,9 +88,9 @@ export function HomePage() {
       let local = 'Localização não obtida'
       try {
         const posicao = await obterLocalizacaoAtual()
-        latitude = posicao.coords.latitude
-        longitude = posicao.coords.longitude
-        precisaoMetros = posicao.coords.accuracy
+        latitude = posicao.latitude
+        longitude = posicao.longitude
+        precisaoMetros = posicao.accuracy
         const localizacao = await areaCampusService.identificar(latitude, longitude)
         if (!localizacao.dentroCampus) {
           toast.erro('Você está muito longe do campus para ativar o SOS. Em emergência, ligue para 190.')
@@ -205,7 +209,7 @@ export function HomePage() {
         <OcorrenciaModal
           ocorrencia={selecionada}
           onClose={() => setSelecionada(null)}
-          destinos={atendimento && selecionada.status === 'pendente' ? (selecionada.tipo === 'manutencao' ? tecnicos : segurancas) : undefined}
+          destinos={atendimento && selecionada.status === 'pendente' ? segurancas : undefined}
           acao={
             atendimento && selecionada.status === 'pendente'
               ? { label: ENCAMINHAR_LABEL[selecionada.tipo], onClick: (destinoId) => void encaminhar(selecionada.id, destinoId) }

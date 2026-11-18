@@ -56,7 +56,7 @@ export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
 
 export const ENCAMINHAR_LABEL: Record<TipoOcorrencia, string> = {
   sos: 'Encaminhar Patrulha',
-  manutencao: 'Encaminhar Técnico',
+  manutencao: 'Encaminhar à Segurança',
   denuncia: 'Encaminhar para Análise',
 }
 

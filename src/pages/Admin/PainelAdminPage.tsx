@@ -14,7 +14,6 @@ export function PainelAdminPage() {
   const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([])
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
   const [segurancas, setSegurancas] = useState<Usuario[]>([])
-  const [tecnicos, setTecnicos] = useState<Usuario[]>([])
 
   const carregar = useCallback(async () => {
     setOcorrencias(await ocorrenciaService.listar())
@@ -23,7 +22,6 @@ export function PainelAdminPage() {
   useEffect(() => {
     void carregar()
     void usuarioService.listarSegurancas().then(setSegurancas)
-    void usuarioService.listarTecnicos().then(setTecnicos)
   }, [carregar, revisao])
 
   async function encaminhar(id: string, destinoId?: string) {
@@ -43,7 +41,6 @@ export function PainelAdminPage() {
   const denuncias = ocorrencias.filter((o) => o.tipo === 'denuncia').length
 
   const fila = [...pendentes].sort((a, b) => Number(b.tipo === 'sos') - Number(a.tipo === 'sos'))
-  const destinosDaOcorrencia = selecionada?.tipo === 'manutencao' ? tecnicos : segurancas
 
   const cards = [
     { label: 'SOS ATIVOS', valor: sosAtivos, cor: 'border-sos-500 text-sos-500' },
@@ -115,7 +112,7 @@ export function PainelAdminPage() {
         <OcorrenciaModal
           ocorrencia={selecionada}
           onClose={() => setSelecionada(null)}
-          destinos={selecionada.status === 'pendente' ? destinosDaOcorrencia : undefined}
+          destinos={selecionada.status === 'pendente' ? segurancas : undefined}
           acao={
             selecionada.status === 'pendente'
               ? { label: ENCAMINHAR_LABEL[selecionada.tipo], onClick: (destinoId) => void encaminhar(selecionada.id, destinoId) }
