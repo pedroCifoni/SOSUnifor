@@ -3,7 +3,9 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
-ARQUIVO_ENV = Path(__file__).resolve().parents[2] / ".env"
+PASTA_SERVICO = Path(__file__).resolve().parents[2]
+ARQUIVO_ENV = PASTA_SERVICO / ".env"
+PASTA_ARQUIVOS = PASTA_SERVICO / "uploads"
 
 
 class Configuracoes(BaseSettings):

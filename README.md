@@ -66,16 +66,34 @@ A API cria as tabelas e os usuários iniciais sozinha na primeira vez que sobe, 
 │   ├── pages/                        # Telas por perfil e funcionalidade
 │   ├── routes/                       # Rotas e proteção por perfil
 │   └── services/                     # Chamadas à API por recurso
-├── backend/services/auth-service/    # API FastAPI (o back-end completo)
-│   ├── app/                          # Rotas, modelos, schemas e configuração
-│   ├── seed_unifor.sql               # Áreas reais do campus e ocorrências de exemplo
-│   └── importar_areas_unifor_osm.py  # Importa prédios da UNIFOR do OpenStreetMap
+├── backend/services/auth-service/    # API FastAPI
+│   ├── app/
+│   │   ├── controllers/              # Rotas HTTP e WebSocket: recebem a requisição e chamam o service
+│   │   ├── services/                 # Regras de negócio e controle da transação
+│   │   ├── repositories/             # Consultas e gravações no banco
+│   │   ├── entities/                 # Tabelas (modelos SQLAlchemy)
+│   │   ├── dtos/                     # Formatos de entrada e saída da API (Pydantic)
+│   │   ├── core/                     # Configuração, banco, segurança/JWT, erros e WebSocket
+│   │   └── main.py                   # Monta a aplicação
+│   ├── scripts/                      # Tarefas manuais (importar áreas do OSM, testar conexão)
+│   ├── testes/                       # Testes HTTP de ponta a ponta
+│   └── alembic/                      # Migrações
 ├── docker-compose.yml                # PostgreSQL para desenvolvimento local
 ├── vercel.json                       # Rewrite da SPA na Vercel
 └── docs/                             # Documentação do projeto
 ```
 
-> As pastas `sos-service`, `user-service`, `location-service` e `notification-service` são esqueletos de uma futura divisão em microsserviços. Hoje toda a API está no `auth-service`.
+### Camadas do back-end
+
+```
+Requisição → Controller → Service → Repository → Banco
+                 │            │
+               DTOs      Entities + regras
+```
+
+- **Controller:** só lida com HTTP. Valida a entrada pelo DTO, identifica o usuário e devolve o DTO de resposta.
+- **Service:** concentra as regras, como quem pode ver ou alterar cada ocorrência, a geração do protocolo, as notificações e a identificação do local do SOS. Lança erros de negócio (`core/excecoes.py`), que viram respostas HTTP.
+- **Repository:** é o único ponto que monta consultas SQLAlchemy. Não faz commit.
 
 ## Rodar localmente
 
@@ -96,6 +114,12 @@ Copy-Item .env.example .env
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
+```
+
+Para importar do OpenStreetMap os prédios da UNIFOR, ainda na pasta da API, rode:
+
+```powershell
+.\.venv\Scripts\python.exe -m scripts.importar_areas_unifor_osm
 ```
 
 **3. Front-end**, em `http://localhost:5173`

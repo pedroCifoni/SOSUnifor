@@ -1,1 +1,9 @@
--r ../requirements.txt
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic-settings
+PyJWT
+pwdlib[argon2]
+psycopg[binary]
+alembic
+python-multipart

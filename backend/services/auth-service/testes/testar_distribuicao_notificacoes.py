@@ -1,4 +1,4 @@
-"""Teste HTTP isolado da distribuição de SOS e encaminhamento técnico.
+"""Teste HTTP isolado da distribuição de SOS e do encaminhamento para a segurança.
 
 Inicie a API usando um banco temporário na porta 8002 antes de executar este arquivo.
 """
@@ -110,27 +110,28 @@ def testar_distribuicao() -> None:
     assert len(notificacoes_da_ocorrencia(token_usuario_conectado, chamado_tecnico_id, "alerta")) == 0
     assert len(notificacoes_da_ocorrencia(token_tecnico, chamado_tecnico_id, "criada")) == 0
 
+    # Chamados de manutenção também são atendidos pela Equipe de Segurança.
+    tecnico = requisitar("/usuarios/tecnicos", token=token_admin)[0]
     try:
         requisitar(
             f"/ocorrencias/{chamado_tecnico_id}/encaminhar",
             "PATCH",
-            {"responsavelId": seguranca["id"]},
+            {"responsavelId": tecnico["id"]},
             token_admin,
         )
-        raise AssertionError("Um chamado técnico não pode ser encaminhado para segurança.")
+        raise AssertionError("Um chamado de manutenção não pode ser encaminhado para o técnico.")
     except AssertionError as erro:
-        assert "Responsável técnico inválido" in str(erro), erro
+        assert "Responsável da segurança inválido" in str(erro), erro
 
-    tecnico = requisitar("/usuarios/tecnicos", token=token_admin)[0]
     requisitar(
         f"/ocorrencias/{chamado_tecnico_id}/encaminhar",
         "PATCH",
-        {"responsavelId": tecnico["id"]},
+        {"responsavelId": seguranca["id"]},
         token_admin,
     )
-    assert len(notificacoes_da_ocorrencia(token_tecnico, chamado_tecnico_id, "encaminhada")) == 1
-    chamados_do_tecnico = requisitar("/ocorrencias", token=token_tecnico)
-    assert any(chamado["id"] == chamado_tecnico_id for chamado in chamados_do_tecnico)
+    assert len(notificacoes_da_ocorrencia(token_seguranca, chamado_tecnico_id, "encaminhada")) == 1
+    chamados_da_seguranca = requisitar("/ocorrencias", token=token_seguranca)
+    assert any(chamado["id"] == chamado_tecnico_id for chamado in chamados_da_seguranca)
 
 
 if __name__ == "__main__":

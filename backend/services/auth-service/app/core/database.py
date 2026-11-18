@@ -11,13 +11,11 @@ class Base(DeclarativeBase):
 
 
 engine = create_engine(configuracoes.database_url, pool_pre_ping=True)
-# A fábrica faz sessões novas; não é para uma requisição ficar dividindo banco igual senha de Netflix.
 FabricaSessao = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 def obter_banco() -> Generator[Session, None, None]:
-    """Abre uma sessão para a requisição e a fecha ao final."""
-    # Abriu a requisição? Abre a sessão. Acabou? Fecha. Banco não é porta de geladeira.
+    """Abre uma sessão por requisição e a fecha ao final."""
     banco = FabricaSessao()
     try:
         yield banco
