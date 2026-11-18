@@ -9,12 +9,6 @@ export interface JwtClaims {
   exp: number
 }
 
-export function base64UrlEncode(texto: string): string {
-  const bytes = new TextEncoder().encode(texto)
-  const binario = Array.from(bytes, (b) => String.fromCharCode(b)).join('')
-  return btoa(binario).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-}
-
 function base64UrlDecode(valor: string): string {
   const base64 = valor.replace(/-/g, '+').replace(/_/g, '/')
   const binario = atob(base64.padEnd(Math.ceil(base64.length / 4) * 4, '='))

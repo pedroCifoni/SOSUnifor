@@ -175,15 +175,6 @@ Com `AMBIENTE=producao`, a API se recusa a iniciar se a `JWT_SECRET` for fraca, 
 
 Um push na `main` atualiza o front e a API.
 
-### Carga inicial do banco
-
-Depois que a API subir pela primeira vez, rode [`seed_unifor.sql`](backend/services/auth-service/seed_unifor.sql) no SQL Editor do Neon. O script insere:
-
-- **73 áreas do campus** tiradas do OpenStreetMap: o limite da UNIFOR, 19 blocos, a biblioteca, a reitoria, os estacionamentos, as praças e as quadras.
-- **8 ocorrências de exemplo**, com histórico e notificações.
-
-Pode rodar mais de uma vez sem duplicar dados.
-
 ## Mapa do campus
 
 O SOS só é aceito dentro do **limite do campus**. Para editar as áreas, o administrador abre **Áreas do Campus** e desenha os polígonos no mapa. Quando um ponto cai em mais de uma área, vale a de maior prioridade. Fora de um bloco, o SOS informa o bloco mais próximo, como "Praça Central · próximo ao Bloco C".
