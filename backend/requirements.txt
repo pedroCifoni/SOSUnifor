@@ -6,3 +6,4 @@ PyJWT
 pwdlib[argon2]
 psycopg[binary]
 python-multipart
+aio-pika==10.2.3
