@@ -175,6 +175,17 @@ Com `AMBIENTE=producao`, a API se recusa a iniciar se a `JWT_SECRET` for fraca, 
 
 Um push na `main` atualiza o front e a API.
 
+### RabbitMQ
+
+(O sistema pode funcionar mesmo sem o broker, com as notificações chegando pelo polling de 60 s.)
+
+1. Crie uma instância no [CloudAMQP](https://www.cloudamqp.com/) (plano free).
+2. Copie a URL `amqps://...`.
+3. No Render, adicione a variável `RABBITMQ_URL` com essa URL.
+4. Faça o redeploy.
+
+Se o log da API mostrar `RabbitMQ conectado`, está funcionando.
+
 ## Mapa do campus
 
 O SOS só é aceito dentro do **limite do campus**. Para editar as áreas, o administrador abre **Áreas do Campus** e desenha os polígonos no mapa. Quando um ponto cai em mais de uma área, vale a de maior prioridade. Fora de um bloco, o SOS informa o bloco mais próximo, como "Praça Central · próximo ao Bloco C".
