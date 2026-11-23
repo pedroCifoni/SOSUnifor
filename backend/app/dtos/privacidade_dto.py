@@ -33,6 +33,8 @@ class TermosResposta(RespostaDTO):
     versao_aceita: str | None
     aceitos_em: str | None
     pendente: bool
+    # Pedido de eliminação ainda em análise (o Perfil mostra que já foi feito).
+    exclusao_solicitada_em: str | None = None
 
 
 class SolicitacaoExclusaoResposta(RespostaDTO):
@@ -71,6 +73,7 @@ class TitularExportado(RespostaDTO):
     id: str
     nome: str
     email: str
+    matricula: str | None
     perfil: str
     conta_ativa: bool
     ultimo_acesso: str | None
@@ -84,6 +87,7 @@ class TitularExportado(RespostaDTO):
             id=str(usuario.id),
             nome=usuario.nome,
             email=usuario.email,
+            matricula=usuario.matricula,
             perfil=usuario.tipo_usuario,
             conta_ativa=usuario.ativo,
             ultimo_acesso=_iso(usuario.ultimo_acesso),

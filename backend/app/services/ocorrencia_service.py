@@ -224,6 +224,7 @@ class OcorrenciaService:
             "encaminhada",
             f"Encaminhada para {responsavel.nome}; aguardando aceite do atendimento.",
             administrador.id,
+            destinatario_id=responsavel.id,
         )
         titulo = (
             "Chamado de manutenção encaminhado para você"

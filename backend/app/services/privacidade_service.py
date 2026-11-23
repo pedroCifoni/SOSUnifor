@@ -41,6 +41,10 @@ MENSAGEM_PEDIDO_EXCLUSAO = (
     "continuam guardadas como registro de segurança, sem identificar você."
 )
 
+MENSAGEM_AVISO_ADMINS = (
+    "Um titular pediu a eliminação dos dados pessoais. Veja quem é em Usuários > Pedidos de exclusão."
+)
+
 
 def _agora() -> datetime:
     return datetime.now(timezone.utc)
@@ -65,6 +69,9 @@ class PrivacidadeService:
             versao_aceita=usuario.termos_versao,
             aceitos_em=usuario.termos_aceitos_em.isoformat() if usuario.termos_aceitos_em else None,
             pendente=usuario.termos_versao != VERSAO_TERMOS,
+            exclusao_solicitada_em=(
+                usuario.exclusao_solicitada_em.isoformat() if usuario.exclusao_solicitada_em else None
+            ),
         )
 
     def aceitar_termos(self, usuario: Usuario, dados: AceiteTermosEntrada) -> TermosResposta:
@@ -116,7 +123,9 @@ class PrivacidadeService:
             administradores,
             "privacidade",
             "Pedido de exclusão de dados (LGPD)",
-            f"{usuario.nome} pediu a eliminação dos dados pessoais. Veja em Usuários > Pedidos de exclusão.",
+            # Sem o nome do titular: a notificação dos admins sobreviveria à anonimização. Quem pediu
+            # aparece na lista de pedidos, que deixa de mostrá-lo depois de anonimizado.
+            MENSAGEM_AVISO_ADMINS,
             None,
         )
         self.sessao.commit()
@@ -140,7 +149,13 @@ class PrivacidadeService:
             raise NaoEncontradoErro("Usuário não encontrado.")
         if usuario.anonimizado_em is not None:
             raise ConflitoErro("Esta conta já foi anonimizada.")
-        if usuario.tipo_usuario == "admin" and usuario.ativo and self.usuarios.contar_ativos_por_perfil("admin") <= 1:
+        # A contagem trava as contas de admin ativas: dois admins anonimizando um ao outro ao mesmo tempo
+        # não passam os dois pela regra (o segundo espera e já conta o primeiro como anonimizado).
+        if (
+            usuario.tipo_usuario == "admin"
+            and usuario.ativo
+            and self.usuarios.travar_e_contar_ativos_por_perfil("admin") <= 1
+        ):
             raise RegraDeNegocioErro("Deve existir ao menos um administrador.")
 
         nome_original = usuario.nome
@@ -156,7 +171,13 @@ class PrivacidadeService:
             usuario.exclusao_solicitada_em = usuario.anonimizado_em
 
         # Eventos guardam o nome de quem recebeu o encaminhamento ("Encaminhada para Fulano; ...").
-        self.eventos.substituir_nas_descricoes(f"para {nome_original};", f"para {NOME_ANONIMIZADO};")
+        # Só os eventos desta pessoa: um homônimo continua com o próprio histórico.
+        self.eventos.substituir_nome_do_destinatario(
+            usuario.id,
+            nome_original,
+            NOME_ANONIMIZADO,
+            legados_em_qualquer_ocorrencia=not self.usuarios.existe_outro_com_nome(nome_original, usuario.id),
+        )
         self.notificacoes_repo.apagar_do_destinatario(usuario.id)
         self.tokens.apagar_do_usuario(usuario.id)
         self.sessao.commit()

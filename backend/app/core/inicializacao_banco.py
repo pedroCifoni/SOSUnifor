@@ -60,6 +60,9 @@ COLUNAS_LGPD = {
         ("exclusao_solicitada_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
         ("anonimizado_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
     ],
+    "eventos_ocorrencia": [
+        ("destinatario_id", "UUID", "CHAR(32)"),
+    ],
 }
 
 

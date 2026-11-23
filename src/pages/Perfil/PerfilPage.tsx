@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Download, FileText, LogOut, Mail, ShieldCheck, Trash2, User } from 'lucide-react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -27,6 +27,23 @@ export function PerfilPage() {
   const [baixando, setBaixando] = useState(false)
   const [confirmarExclusao, setConfirmarExclusao] = useState(false)
   const [exclusaoSolicitadaEm, setExclusaoSolicitadaEm] = useState<string | null>(null)
+
+  // O pedido de exclusão fica gravado no back: ao abrir o Perfil de novo, mostra que já foi feito.
+  useEffect(() => {
+    if (!usuario) return
+    let ativo = true
+    privacidadeService
+      .situacaoTermos()
+      .then((situacao) => {
+        if (ativo && situacao.exclusaoSolicitadaEm) setExclusaoSolicitadaEm(situacao.exclusaoSolicitadaEm)
+      })
+      .catch(() => {
+        // Sem a informação, o botão continua disponível; um pedido repetido devolve a data original.
+      })
+    return () => {
+      ativo = false
+    }
+  }, [usuario])
 
   if (!usuario) return null
 

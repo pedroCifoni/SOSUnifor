@@ -38,7 +38,13 @@ def test_aceite_de_termos_registra_versao_e_data(client: TestClient, criar_usuar
 
     situacao = client.get("/me/termos", headers=_cabecalho(token))
     assert situacao.status_code == 200
-    assert situacao.json() == {"versaoAtual": VERSAO_TERMOS, "versaoAceita": None, "aceitosEm": None, "pendente": True}
+    assert situacao.json() == {
+        "versaoAtual": VERSAO_TERMOS,
+        "versaoAceita": None,
+        "aceitosEm": None,
+        "pendente": True,
+        "exclusaoSolicitadaEm": None,
+    }
 
     antiga = client.post("/me/termos", headers=_cabecalho(token), json={"versao": "1999-01"})
     assert antiga.status_code == 400
@@ -89,12 +95,16 @@ def test_exportacao_contem_so_os_dados_do_proprio_titular(client: TestClient, cr
             f"/ocorrencias/{ocorrencia['id']}/encaminhar", headers=_cabecalho(admin), json={"responsavelId": tecnico_id}
         ).status_code == 200
     client.post("/me/termos", headers=_cabecalho(titular), json={"versao": VERSAO_TERMOS})
+    with FabricaSessao() as sessao:  # conta legada com matrícula
+        sessao.scalars(select(Usuario).where(Usuario.email == "titular@unifor.br")).one().matricula = "20210001"
+        sessao.commit()
 
     resposta = client.get("/me/dados", headers=_cabecalho(titular))
     assert resposta.status_code == 200, resposta.text
     dados = resposta.json()
 
     assert dados["titular"]["email"] == "titular@unifor.br"
+    assert dados["titular"]["matricula"] == "20210001"
     assert dados["titular"]["termosVersao"] == VERSAO_TERMOS
     assert dados["titular"]["termosAceitosEm"]
     assert {o["id"] for o in dados["ocorrencias"]} == {minha["id"], minha_anonima["id"]}
@@ -129,7 +139,9 @@ def test_pedido_de_exclusao_exige_confirmacao_e_notifica_admins(client: TestClie
         avisos = [n for n in client.get("/notificacoes", headers=_cabecalho(token)).json() if n["tipo"] == "privacidade"]
         assert len(avisos) == 1
         assert avisos[0]["ocorrenciaId"] is None
-        assert "Titular Teste" in avisos[0]["mensagem"]
+        # Sem o nome: a notificação dos admins não é apagada na anonimização do titular.
+        assert "Titular Teste" not in avisos[0]["titulo"] + avisos[0]["mensagem"]
+        assert "Pedidos de exclusão" in avisos[0]["mensagem"]
     # O titular e os demais perfis não recebem o aviso.
     seguranca = token_de(client, "seguranca@unifor.br")
     assert client.get("/notificacoes", headers=_cabecalho(seguranca)).json() == []
@@ -138,6 +150,9 @@ def test_pedido_de_exclusao_exige_confirmacao_e_notifica_admins(client: TestClie
     repetido = client.post("/me/solicitar-exclusao", headers=_cabecalho(titular), json={"confirmar": True})
     assert repetido.json()["solicitadaEm"] == solicitada_em
     assert len([n for n in client.get("/notificacoes", headers=_cabecalho(admin)).json() if n["tipo"] == "privacidade"]) == 1
+
+    # O Perfil sabe, mesmo depois de recarregar, que o pedido já foi feito.
+    assert client.get("/me/termos", headers=_cabecalho(titular)).json()["exclusaoSolicitadaEm"] == solicitada_em
 
     pedidos = client.get("/usuarios/pedidos-exclusao", headers=_cabecalho(admin))
     assert pedidos.status_code == 200
@@ -171,6 +186,10 @@ def test_anonimizacao_e_irreversivel_e_preserva_ocorrencias_sem_identificar(clie
         assert sessao.scalars(select(Usuario).where(Usuario.email == "titular@unifor.br")).first() is None
         assert sessao.scalars(select(TokenRedefinicaoSenha).where(TokenRedefinicaoSenha.usuario_id == registro.id)).all() == []
         assert sessao.scalars(select(Notificacao).where(Notificacao.destinatario_id == registro.id)).all() == []
+        # Nenhuma notificação (nem o aviso de pedido de exclusão enviado aos admins) guarda o nome.
+        notificacoes = sessao.scalars(select(Notificacao)).all()
+        assert any(n.tipo == "privacidade" for n in notificacoes)
+        assert not any("Fulano" in f"{n.titulo} {n.mensagem}" for n in notificacoes)
         ocorrencia = sessao.get(Ocorrencia, UUID(chamado["id"]))
         assert ocorrencia is not None and ocorrencia.autor_id == registro.id
 
@@ -201,6 +220,62 @@ def test_anonimizacao_remove_nome_do_responsavel_dos_eventos(client: TestClient,
     assert any(NOME_ANONIMIZADO in descricao for descricao in descricoes)
 
 
+def _texto_da_ocorrencia(client: TestClient, token: str, chamado: dict) -> str:
+    return str(client.get(f"/ocorrencias/{chamado['id']}", headers=_cabecalho(token)).json())
+
+
+def test_anonimizacao_nao_altera_eventos_de_homonimo(client: TestClient, criar_usuario) -> None:
+    criar_usuario("titular@unifor.br")
+    tecnico_a = criar_usuario("joao.a@unifor.br", perfil="tecnico", nome="Joao Silva")
+    tecnico_b = criar_usuario("joao.b@unifor.br", perfil="tecnico", nome="Joao Silva")
+    titular = token_de(client, "titular@unifor.br", "senha123")
+    admin = token_de(client, "admin@unifor.br")
+    do_a = _criar_ocorrencia(client, titular, titulo="Do A")
+    do_b = _criar_ocorrencia(client, titular, titulo="Do B")
+    for chamado, tecnico in ((do_a, tecnico_a), (do_b, tecnico_b)):
+        assert client.patch(
+            f"/ocorrencias/{chamado['id']}/encaminhar", headers=_cabecalho(admin), json={"responsavelId": str(tecnico.id)}
+        ).status_code == 200
+
+    assert client.post(f"/usuarios/{tecnico_a.id}/anonimizar", headers=_cabecalho(admin)).status_code == 200
+
+    texto_a = _texto_da_ocorrencia(client, admin, do_a)
+    texto_b = _texto_da_ocorrencia(client, admin, do_b)
+    assert "Joao Silva" not in texto_a and NOME_ANONIMIZADO in texto_a
+    assert "Encaminhada para Joao Silva;" in texto_b and NOME_ANONIMIZADO not in texto_b
+
+
+def test_anonimizacao_de_eventos_antigos_sem_destinatario(client: TestClient, criar_usuario) -> None:
+    """Eventos gravados antes de `destinatario_id`: com homônimo, só muda onde a pessoa é a responsável."""
+    criar_usuario("titular@unifor.br")
+    tecnico_a = criar_usuario("joao.a@unifor.br", perfil="tecnico", nome="Joao Silva")
+    tecnico_b = criar_usuario("joao.b@unifor.br", perfil="tecnico", nome="Joao Silva")
+    tecnico_c = criar_usuario("maria@unifor.br", perfil="tecnico", nome="Maria Souza")
+    titular = token_de(client, "titular@unifor.br", "senha123")
+    admin = token_de(client, "admin@unifor.br")
+    do_a = _criar_ocorrencia(client, titular, titulo="Do A")
+    do_b = _criar_ocorrencia(client, titular, titulo="Do B")
+    reencaminhada = _criar_ocorrencia(client, titular, titulo="Era da Maria")
+    for chamado, tecnico in ((do_a, tecnico_a), (do_b, tecnico_b), (reencaminhada, tecnico_c)):
+        assert client.patch(
+            f"/ocorrencias/{chamado['id']}/encaminhar", headers=_cabecalho(admin), json={"responsavelId": str(tecnico.id)}
+        ).status_code == 200
+    with FabricaSessao() as sessao:
+        # Simula dados gravados antes da coluna e uma ocorrência que mudou de responsável depois.
+        sessao.query(EventoOcorrencia).update({EventoOcorrencia.destinatario_id: None})
+        sessao.get(Ocorrencia, UUID(reencaminhada["id"])).responsavel_id = tecnico_b.id
+        sessao.commit()
+
+    assert client.post(f"/usuarios/{tecnico_a.id}/anonimizar", headers=_cabecalho(admin)).status_code == 200
+    assert client.post(f"/usuarios/{tecnico_c.id}/anonimizar", headers=_cabecalho(admin)).status_code == 200
+
+    assert "Joao Silva" not in _texto_da_ocorrencia(client, admin, do_a)  # A é o responsável atual
+    assert "Encaminhada para Joao Silva;" in _texto_da_ocorrencia(client, admin, do_b)  # homônimo intocado
+    # Sem homônimo, o evento antigo é trocado mesmo onde a pessoa deixou de ser a responsável.
+    texto = _texto_da_ocorrencia(client, admin, reencaminhada)
+    assert "Maria Souza" not in texto and NOME_ANONIMIZADO in texto
+
+
 def test_admin_nao_anonimiza_a_si_mesmo_e_so_admin_anonimiza(client: TestClient, criar_usuario) -> None:
     outro = criar_usuario("outro@unifor.br")
     admin = token_de(client, "admin@unifor.br")
@@ -225,6 +300,46 @@ def test_ultimo_admin_nao_pode_ser_anonimizado(client: TestClient, criar_usuario
         with pytest.raises(RegraDeNegocioErro, match="ao menos um administrador"):
             PrivacidadeService(sessao).anonimizar(unico_admin.id, desativado)
         assert sessao.get(Usuario, unico_admin.id).nome != NOME_ANONIMIZADO
+
+
+def test_dois_admins_anonimizando_um_ao_outro_nao_zeram_os_admins(client: TestClient, criar_usuario) -> None:
+    """A contagem trava as contas de admin: a segunda anonimização espera a primeira e é recusada."""
+    import threading
+
+    from app.core.excecoes import RegraDeNegocioErro
+    from app.repositories.usuario_repository import UsuarioRepository
+    from app.services.privacidade_service import PrivacidadeService
+
+    segundo = criar_usuario("admin2@unifor.br", perfil="admin", nome="Segundo Admin")
+    with FabricaSessao() as sessao:
+        primeiro_id = sessao.scalars(select(Usuario.id).where(Usuario.email == "admin@unifor.br")).one()
+
+    resultado: dict[str, object] = {}
+
+    def segundo_anonimiza_o_primeiro() -> None:
+        with FabricaSessao() as sessao:
+            try:
+                PrivacidadeService(sessao).anonimizar(primeiro_id, segundo)
+                resultado["ok"] = True
+            except Exception as erro:  # noqa: BLE001
+                resultado["erro"] = erro
+
+    # Primeira transação: o admin 1 anonimiza o 2 e ainda não confirmou.
+    with FabricaSessao() as sessao:
+        assert UsuarioRepository(sessao).travar_e_contar_ativos_por_perfil("admin") == 2
+        sessao.get(Usuario, segundo.id).ativo = False
+        sessao.flush()
+
+        concorrente = threading.Thread(target=segundo_anonimiza_o_primeiro)
+        concorrente.start()
+        concorrente.join(timeout=1)
+        assert concorrente.is_alive(), "a segunda anonimização deveria esperar a trava"
+        sessao.commit()
+    concorrente.join(timeout=10)
+
+    assert isinstance(resultado.get("erro"), RegraDeNegocioErro), resultado
+    with FabricaSessao() as sessao:
+        assert sessao.get(Usuario, primeiro_id).ativo is True
 
 
 def test_contas_iniciais_nao_voltam_depois_de_anonimizadas(client: TestClient) -> None:

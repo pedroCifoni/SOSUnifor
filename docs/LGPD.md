@@ -12,6 +12,7 @@ Este documento registra como o Uni SOS trata dados pessoais e o que foi constru�
 | Dado | Onde fica | Finalidade | Base legal (art. 7º) | Retenção | Quem acessa |
 |---|---|---|---|---|---|
 | Nome, e-mail institucional, perfil | `credentials` | Identificar a pessoa, login, encaminhamento das ocorrências | IX (legítimo interesse / política institucional) | Enquanto houver vínculo ou até a anonimização a pedido do titular | O próprio titular; admin (lista de usuários). E-mail da equipe só para o admin (minimização). Segurança/técnicos veem o nome do solicitante das ocorrências encaminhadas a eles. |
+| Matrícula (contas antigas) | `credentials.matricula` | Identificação acadêmica (campo legado; o cadastro atual não pede) | IX | Igual à conta; apagada na anonimização | Titular (exportação) |
 | Hash da senha (Argon2) | `credentials.senha_hash` | Autenticação | IX | Igual à conta; na anonimização é trocado por hash de senha aleatória descartada | Ninguém (nunca é devolvido pela API) |
 | Último acesso | `credentials.ultimo_acesso` | Saber quem está online para o alerta de "zona vermelha" do SOS; segurança | IX | Sobrescrito a cada acesso; apagado na anonimização | Uso interno do sistema; exportado ao titular |
 | Ciência da política (versão e data) | `credentials.termos_versao`, `termos_aceitos_em` | Comprovar a transparência (art. 6º, VI; art. 9º) | II (obrigação legal) / IX | Igual à conta | Titular (exportação) |
@@ -41,11 +42,11 @@ Este documento registra como o Uni SOS trata dados pessoais e o que foi constru�
 | Direito | Como fazer no Uni SOS |
 |---|---|
 | I - Confirmação da existência de tratamento | Política de Privacidade (`/privacidade`) e "Baixar meus dados" em Meu Perfil. |
-| II - Acesso aos dados | Meu Perfil > **Baixar meus dados** (`GET /me/dados`): perfil, ocorrências que a pessoa abriu (com histórico), notificações recebidas e datas de ciência da política. |
+| II - Acesso aos dados | Meu Perfil > **Baixar meus dados** (`GET /me/dados`): perfil (inclusive a matrícula das contas antigas), ocorrências que a pessoa abriu (com histórico), notificações recebidas e datas de ciência da política. |
 | III - Correção | O titular pede à administração; o admin corrige nome/e-mail em **Usuários**. |
 | IV - Anonimização, bloqueio ou eliminação de dados desnecessários | Retenção automática (seção 4) e anonimização a pedido (direito VI). |
 | V - Portabilidade | O mesmo arquivo `.json` do direito II, em formato estruturado e aberto. |
-| VI - Eliminação | Meu Perfil > **Solicitar exclusão dos meus dados** (`POST /me/solicitar-exclusao`, com confirmação). A data do pedido é gravada e os administradores recebem uma notificação. Em **Usuários > Pedidos de exclusão**, o admin clica em **Anonimizar** (`POST /usuarios/{id}/anonimizar`). |
+| VI - Eliminação | Meu Perfil > **Solicitar exclusão dos meus dados** (`POST /me/solicitar-exclusao`, com confirmação). A data do pedido é gravada (o Perfil a mostra via `GET /me/termos`, campo `exclusaoSolicitadaEm`) e os administradores recebem uma notificação **sem o nome do titular** (quem pediu aparece só na lista de pedidos), para que nada identifique a pessoa depois da anonimização. Em **Usuários > Pedidos de exclusão**, o admin clica em **Anonimizar** (`POST /usuarios/{id}/anonimizar`). |
 | VII - Informação sobre compartilhamento | Seção 4 da Política de Privacidade. |
 | VIII - Informação sobre não consentir | O tratamento não se baseia em consentimento (bases: proteção da vida, legítimo interesse/política institucional e obrigação legal). A tela de "ciência" registra que a pessoa foi informada, não um consentimento. |
 | IX - Revogação do consentimento | Não se aplica pelo mesmo motivo; a pessoa pode pedir a eliminação (VI). |
@@ -56,9 +57,9 @@ Este documento registra como o Uni SOS trata dados pessoais e o que foi constru�
 1. `nome` vira `Titular anonimizado`; `email` vira `anonimizado-<uuid aleatório>@anonimizado.invalid` (sem relação com o e-mail original).
 2. A senha é trocada pelo hash de uma senha aleatória que é descartada; a conta é desativada; `matricula` e `ultimo_acesso` são apagados.
 3. Notificações recebidas e tokens de redefinição da pessoa são apagados.
-4. Nos eventos das ocorrências, o nome dela como responsável ("Encaminhada para Fulano;") é trocado por "Titular anonimizado".
+4. Nos eventos das ocorrências, o nome dela como responsável ("Encaminhada para Fulano;") é trocado por "Titular anonimizado". Só os eventos dela: os encaminhamentos guardam `eventos_ocorrencia.destinatario_id`, então um homônimo não é afetado. Nos eventos antigos (sem esse campo), a troca vale para as ocorrências em que ela é a responsável atual; se não houver outra conta com o mesmo nome, vale para todos.
 5. **As ocorrências são mantidas** (registro de segurança e obrigação legal, art. 16, I): o solicitante passa a aparecer como "Titular anonimizado".
-6. Regras: o admin não pode anonimizar a si mesmo, não pode anonimizar o último administrador ativo e a mesma conta não é anonimizada duas vezes.
+6. Regras: o admin não pode anonimizar a si mesmo, não pode anonimizar o último administrador ativo e a mesma conta não é anonimizada duas vezes. A contagem de admins trava as contas de admin ativas (`SELECT ... FOR UPDATE`): dois admins anonimizando um ao outro ao mesmo tempo não deixam o sistema sem administrador.
 7. Depois que alguma conta foi anonimizada, as contas iniciais de desenvolvimento não são mais recriadas na subida da API (senão uma conta inicial anonimizada voltaria com a senha padrão).
 
 **Limite conhecido:** textos livres (título/descrição das ocorrências) e fotos anexadas podem conter dados pessoais escritos ou fotografados pelo próprio usuário. Eles não são alterados automaticamente; se necessário, o admin avalia caso a caso.
@@ -71,6 +72,8 @@ Rotina `RetencaoService` (`backend/app/services/retencao_service.py`), chamada p
 |---|---|---|
 | Tokens de redefinição de senha | 24 h depois de vencer (a folga preserva os pedidos usados no limite de 3 por hora) | `RETENCAO_TOKENS_VENCIDOS_HORAS` (padrão `24`) |
 | Notificações já lidas | 180 dias depois de criadas | `RETENCAO_NOTIFICACOES_LIDAS_DIAS` (padrão `180`) |
+
+**Prazos citados na Política de Privacidade:** a página `/privacidade` informa ao titular "180 dias" (notificações lidas) e "30 minutos" (validade dos links de redefinição, `REDEFINICAO_SENHA_EXPIRA_MINUTOS`). Se mudar `RETENCAO_NOTIFICACOES_LIDAS_DIAS` ou `REDEFINICAO_SENHA_EXPIRA_MINUTOS` no Render, atualize o texto da política e aumente `VERSAO_TERMOS` (back e front) para que os titulares sejam informados do novo prazo (art. 9º).
 
 Não são apagados automaticamente: notificações não lidas, ocorrências, eventos e contas. Quando a verificação de e-mail tiver tokens próprios, inclua-os nesta rotina com a mesma regra.
 

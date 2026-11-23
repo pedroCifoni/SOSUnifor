@@ -16,6 +16,8 @@ export interface SituacaoTermos {
   versaoAceita: string | null
   aceitosEm: string | null
   pendente: boolean
+  /** Data do pedido de exclusão ainda não concluído (null se não houver pedido). */
+  exclusaoSolicitadaEm?: string | null
 }
 
 /** Resposta de POST /me/solicitar-exclusao. */
