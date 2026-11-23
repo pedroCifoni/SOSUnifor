@@ -5,6 +5,8 @@ from sqlalchemy.orm import Session
 from app.core.excecoes import ConflitoErro, NaoEncontradoErro, RegraDeNegocioErro
 from app.core.seguranca import gerar_hash_senha
 from app.dtos.usuario_dto import (
+    LIMITE_PADRAO_USUARIOS,
+    ResumoUsuariosResposta,
     SegurancaNotificadaResposta,
     UsuarioAtualizacao,
     UsuarioEntrada,
@@ -24,8 +26,19 @@ class UsuarioService:
         self.emails = emails or EmailService()
 
     # ---------- consultas ----------
-    def listar_ativos(self) -> list[UsuarioResposta]:
-        return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos()]
+    def listar_ativos(
+        self,
+        *,
+        busca: str | None = None,
+        perfil: str | None = None,
+        limite: int = LIMITE_PADRAO_USUARIOS,
+        pagina: int = 1,
+    ) -> list[UsuarioResposta]:
+        usuarios = self.usuarios.listar_ativos(busca=busca, perfil=perfil, limite=limite, pagina=pagina)
+        return [UsuarioResposta.de_entidade(usuario) for usuario in usuarios]
+
+    def resumir_ativos(self, *, busca: str | None = None, perfil: str | None = None) -> ResumoUsuariosResposta:
+        return ResumoUsuariosResposta(total=self.usuarios.contar_ativos(busca=busca, perfil=perfil))
 
     def listar_por_perfil(self, perfil: str) -> list[UsuarioResposta]:
         return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos_por_perfil(perfil)]

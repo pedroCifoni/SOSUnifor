@@ -1,10 +1,23 @@
 from datetime import datetime
+import unicodedata
 from uuid import UUID
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.entities.usuario import Usuario
+
+
+def normalizar_termo_busca(texto: str) -> str:
+    """Remove acentos e converte para minúsculas para casar com `unisos_normalizar_busca`."""
+    decomposto = unicodedata.normalize("NFKD", texto.strip())
+    sem_acentos = "".join(caractere for caractere in decomposto if unicodedata.category(caractere) != "Mn")
+    return sem_acentos.lower()
+
+
+def escapar_like(texto: str) -> str:
+    """Trata `%`, `_` e `\\` digitados na busca como caracteres literais no LIKE."""
+    return texto.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
 class UsuarioRepository:
@@ -17,8 +30,46 @@ class UsuarioRepository:
     def buscar_por_email(self, email: str) -> Usuario | None:
         return self.sessao.scalar(select(Usuario).where(Usuario.email == email.lower().strip()))
 
-    def listar_ativos(self) -> list[Usuario]:
-        return list(self.sessao.scalars(select(Usuario).where(Usuario.ativo).order_by(Usuario.nome)))
+    def _aplicar_filtros_ativos(self, consulta, *, busca: str | None = None, perfil: str | None = None):
+        consulta = consulta.where(Usuario.ativo)
+        if perfil is not None:
+            consulta = consulta.where(Usuario.tipo_usuario == perfil)
+        if busca is not None:
+            termo = normalizar_termo_busca(busca)
+            if termo:
+                padrao = f"%{escapar_like(termo)}%"
+                if self.sessao.get_bind().dialect.name == "postgresql":
+                    consulta = consulta.where(
+                        or_(
+                            func.unisos_normalizar_busca(Usuario.nome).like(padrao, escape="\\"),
+                            func.unisos_normalizar_busca(Usuario.email).like(padrao, escape="\\"),
+                        )
+                    )
+                else:
+                    consulta = consulta.where(
+                        or_(
+                            func.lower(Usuario.nome).like(padrao, escape="\\"),
+                            func.lower(Usuario.email).like(padrao, escape="\\"),
+                        )
+                    )
+        return consulta
+
+    def listar_ativos(
+        self,
+        *,
+        busca: str | None = None,
+        perfil: str | None = None,
+        limite: int = 50,
+        pagina: int = 1,
+    ) -> list[Usuario]:
+        deslocamento = (max(1, pagina) - 1) * limite
+        consulta = self._aplicar_filtros_ativos(select(Usuario), busca=busca, perfil=perfil)
+        consulta = consulta.order_by(Usuario.nome, Usuario.id).offset(deslocamento).limit(limite)
+        return list(self.sessao.scalars(consulta))
+
+    def contar_ativos(self, *, busca: str | None = None, perfil: str | None = None) -> int:
+        consulta = self._aplicar_filtros_ativos(select(func.count()).select_from(Usuario), busca=busca, perfil=perfil)
+        return int(self.sessao.scalar(consulta) or 0)
 
     def listar_ativos_por_perfil(self, perfil: str) -> list[Usuario]:
         consulta = select(Usuario).where(Usuario.ativo, Usuario.tipo_usuario == perfil).order_by(Usuario.nome)

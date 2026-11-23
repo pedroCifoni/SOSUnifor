@@ -8,6 +8,13 @@ from app.entities.usuario import Usuario
 
 Perfil = Literal["usuario", "seguranca", "tecnico", "admin"]
 
+LIMITE_PADRAO_USUARIOS = 50
+LIMITE_MAXIMO_USUARIOS = 200
+
+
+def ajustar_limite_usuarios(limite: int) -> int:
+    return max(1, min(limite, LIMITE_MAXIMO_USUARIOS))
+
 
 # ---------- entrada ----------
 class UsuarioEntrada(BaseModel):
@@ -54,6 +61,10 @@ class UsuarioResposta(RespostaDTO):
     @classmethod
     def de_entidade(cls, usuario: Usuario) -> "UsuarioResposta":
         return cls(id=str(usuario.id), nome=usuario.nome, email=usuario.email, perfil=usuario.tipo_usuario)
+
+
+class ResumoUsuariosResposta(RespostaDTO):
+    total: int
 
 
 class UsuarioLoteResposta(RespostaDTO):

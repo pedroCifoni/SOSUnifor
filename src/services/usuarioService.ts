@@ -1,5 +1,17 @@
 import { http } from '@/api/client'
-import type { DadosUsuario, Usuario } from '@/models/usuario'
+import type { DadosUsuario, Perfil, Usuario } from '@/models/usuario'
+import { montarQuery } from '@/services/paginacao'
+
+export interface FiltrosUsuarios {
+  busca?: string
+  perfil?: Perfil
+  limite?: number
+  pagina?: number
+}
+
+export interface ResumoUsuarios {
+  total: number
+}
 
 export interface LoteUsuarios {
   criacoes: DadosUsuario[]
@@ -8,8 +20,22 @@ export interface LoteUsuarios {
 }
 
 export const usuarioService = {
-  listar(): Promise<Usuario[]> {
-    return http.get<Usuario[]>('/usuarios')
+  listar(filtros: FiltrosUsuarios = {}): Promise<Usuario[]> {
+    const query = montarQuery({
+      busca: filtros.busca?.trim() || undefined,
+      perfil: filtros.perfil,
+      limite: filtros.limite,
+      pagina: filtros.pagina,
+    })
+    return http.get<Usuario[]>(`/usuarios${query}`)
+  },
+
+  resumir(filtros: Pick<FiltrosUsuarios, 'busca' | 'perfil'> = {}): Promise<ResumoUsuarios> {
+    const query = montarQuery({
+      busca: filtros.busca?.trim() || undefined,
+      perfil: filtros.perfil,
+    })
+    return http.get<ResumoUsuarios>(`/usuarios/resumo${query}`)
   },
 
   listarSegurancas(): Promise<Usuario[]> {

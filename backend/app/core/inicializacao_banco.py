@@ -4,6 +4,8 @@ Ajusta tabelas de versões antigas sem apagar dados, cria as tabelas que faltam
 e cadastra as contas iniciais quando ainda não existem.
 """
 
+import logging
+
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -11,6 +13,9 @@ import app.entities  # noqa: F401  (registra as tabelas em Base.metadata)
 from app.core.database import Base, engine
 from app.core.seguranca import gerar_hash_senha
 from app.entities.usuario import Usuario
+
+
+logger = logging.getLogger(__name__)
 
 
 CONTAS_INICIAIS = [
@@ -42,6 +47,7 @@ def _executar_etapas() -> None:
     atualizar_ocorrencias_legadas()
     Base.metadata.create_all(bind=engine)
     criar_indices_de_consulta()
+    preparar_busca_de_usuarios()
     preparar_sequencia_de_protocolo()
     ativar_limite_unifor_revisado()
     criar_usuarios_iniciais()
@@ -59,12 +65,104 @@ INDICES_DE_CONSULTA = [
     "CREATE INDEX IF NOT EXISTS ix_notificacoes_destinatario_nao_lidas ON notificacoes (destinatario_id) WHERE lida = false",
     # Busca de contas ativas por perfil (admins avisados a cada nova ocorrência, equipes etc.).
     "CREATE INDEX IF NOT EXISTS ix_credentials_tipo_usuario_ativo ON credentials (tipo_usuario, ativo)",
+    # Busca funcional case-insensitive por nome e e-mail (independe de extensões).
+    "CREATE INDEX IF NOT EXISTS ix_credentials_nome_lower ON credentials (lower(nome))",
+    "CREATE INDEX IF NOT EXISTS ix_credentials_email_lower ON credentials (lower(email))",
 ]
 
 def criar_indices_de_consulta() -> None:
     with engine.begin() as conexao:
         for comando in INDICES_DE_CONSULTA:
             conexao.execute(text(comando))
+
+
+def _tentar_criar_extensao(nome: str) -> bool:
+    """Tenta habilitar uma extensão PostgreSQL sem derrubar a subida se o ambiente não permitir."""
+    try:
+        with engine.begin() as conexao:
+            conexao.execute(text(f"CREATE EXTENSION IF NOT EXISTS {nome}"))
+        return True
+    except Exception as erro:
+        logger.warning("Extensão PostgreSQL '%s' indisponível; seguindo com alternativa nativa: %s", nome, erro)
+        return False
+
+
+def _schema_extensao(nome: str) -> str | None:
+    try:
+        with engine.connect() as conexao:
+            return conexao.scalar(
+                text(
+                    "SELECT n.nspname FROM pg_extension e "
+                    "JOIN pg_namespace n ON n.oid = e.extnamespace "
+                    "WHERE e.extname = :nome"
+                ),
+                {"nome": nome},
+            )
+    except Exception:
+        return None
+
+
+def preparar_busca_de_usuarios() -> None:
+    """Prepara normalização sem acentos/maiúsculas e índices trigram para a busca de usuários.
+
+    Usa ``unaccent`` quando disponível no PostgreSQL e cai para ``translate(lower(...))`` quando
+    a extensão não pode ser criada (ex.: permissões restritas). Quando ``pg_trgm`` está disponível,
+    cria índices GIN trigram sobre a função imutável ``unisos_normalizar_busca`` para acelerar
+    buscas por substring (``LIKE '%termo%'``).
+    """
+    if engine.dialect.name != "postgresql":
+        return
+
+    _tentar_criar_extensao("unaccent")
+    pg_trgm_disponivel = _tentar_criar_extensao("pg_trgm")
+    schema_unaccent = _schema_extensao("unaccent")
+
+    if schema_unaccent and schema_unaccent.isidentifier():
+        corpo_funcao = (
+            f"SELECT lower({schema_unaccent}.unaccent('{schema_unaccent}.unaccent'::regdictionary, texto))"
+        )
+    else:
+        corpo_funcao = (
+            "SELECT translate("
+            "lower(texto), "
+            "'áàâãäåéèêëíìîïóòôõöúùûüçñýÿ', "
+            "'aaaaaaeeeeiiiiooooouuuucnyy'"
+            ")"
+        )
+
+    with engine.begin() as conexao:
+        conexao.execute(
+            text(
+                f"""
+                CREATE OR REPLACE FUNCTION unisos_normalizar_busca(texto TEXT)
+                RETURNS TEXT
+                LANGUAGE sql
+                IMMUTABLE
+                PARALLEL SAFE
+                AS $$ {corpo_funcao} $$
+                """
+            )
+        )
+
+    if pg_trgm_disponivel:
+        try:
+            with engine.begin() as conexao:
+                conexao.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_credentials_nome_busca_trgm "
+                        "ON credentials USING gin (unisos_normalizar_busca(nome) gin_trgm_ops) "
+                        "WHERE ativo = true"
+                    )
+                )
+                conexao.execute(
+                    text(
+                        "CREATE INDEX IF NOT EXISTS ix_credentials_email_busca_trgm "
+                        "ON credentials USING gin (unisos_normalizar_busca(email) gin_trgm_ops) "
+                        "WHERE ativo = true"
+                    )
+                )
+        except Exception as erro:
+            logger.warning("Não foi possível criar índices trigram para busca de usuários: %s", erro)
 
 
 def preparar_sequencia_de_protocolo() -> None:
