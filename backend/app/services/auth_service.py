@@ -42,6 +42,10 @@ class AuthService:
 
     def entrar(self, dados: LoginEntrada) -> TokenResposta:
         usuario = self.usuarios.buscar_por_email(dados.email)
+        # Devolve a conexão ao pool ANTES do Argon2: o hash é lento de propósito (e mais ainda com a
+        # CPU disputada) e não precisa do banco. Segurá-la esgotava o pool sob muitos logins.
+        # close() não expira os atributos já carregados, então `usuario` continua legível.
+        self.sessao.close()
         if usuario is None or not usuario.ativo or not conferir_senha(dados.senha, usuario.senha_hash):
             raise NaoAutenticadoErro("E-mail ou senha inválidos.")
         return TokenResposta(token=criar_token(usuario))

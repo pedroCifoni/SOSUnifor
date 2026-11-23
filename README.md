@@ -225,6 +225,7 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 
 | Variável | Descrição |
 |---|---|
+| `BREVO_API_KEY` | Envia os e-mails pela API HTTPS da Brevo em vez de SMTP. **Obrigatória no plano gratuito do Render**, que bloqueia as portas de SMTP. O remetente (`SMTP_REMETENTE`) precisa estar verificado na Brevo. |
 | `SMTP_HOST` | Servidor SMTP (em dev: `localhost` para o Mailpit; em produção: ex. `smtp.gmail.com`). Sem ela, nada é enviado. |
 | `SMTP_PORT` | Porta SMTP (`1025` no Mailpit; `587` com STARTTLS). |
 | `SMTP_USUARIO` | Usuário de autenticação SMTP (vazio no Mailpit). |

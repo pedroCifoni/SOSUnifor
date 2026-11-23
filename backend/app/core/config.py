@@ -39,6 +39,11 @@ class Configuracoes(BaseSettings):
     smtp_starttls: bool = True
     smtp_ssl: bool = False
 
+    # E-mail por API HTTP (porta 443). Com BREVO_API_KEY preenchida, ela é usada no lugar do SMTP.
+    # Necessário no plano gratuito do Render, que bloqueia as portas de SMTP (25, 465 e 587).
+    # O remetente continua vindo de SMTP_REMETENTE e precisa estar verificado na Brevo.
+    brevo_api_key: str = ""
+
     model_config = SettingsConfigDict(
         env_file=ARQUIVO_ENV,
         env_file_encoding="utf-8",
