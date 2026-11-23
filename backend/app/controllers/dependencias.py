@@ -16,6 +16,7 @@ from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
+from app.services.relatorio_service import RelatorioService
 from app.services.usuario_service import UsuarioService
 
 
@@ -56,6 +57,10 @@ def area_campus_service(banco: Banco) -> AreaCampusService:
 
 def ocorrencia_service(banco: Banco, tarefas: BackgroundTasks) -> OcorrenciaService:
     return OcorrenciaService(banco, avisar=_avisador(tarefas))
+
+
+def relatorio_service(banco: Banco) -> RelatorioService:
+    return RelatorioService(banco)
 
 
 def notificacao_service(banco: Banco) -> NotificacaoService:

@@ -7,3 +7,4 @@ pwdlib[argon2]
 psycopg[binary]
 python-multipart
 aio-pika==10.2.3
+reportlab==4.2.5
