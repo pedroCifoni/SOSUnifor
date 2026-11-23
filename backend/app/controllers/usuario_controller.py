@@ -1,16 +1,21 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Query, status
 
 from app.controllers.dependencias import Administrador, UsuarioAtual, usuario_service
 from app.dtos.usuario_dto import (
+    LIMITE_MAXIMO_USUARIOS,
+    LIMITE_PADRAO_USUARIOS,
+    Perfil,
+    ResumoUsuariosResposta,
     SegurancaNotificadaResposta,
     UsuarioAtualizacao,
     UsuarioEntrada,
     UsuarioLoteEntrada,
     UsuarioLoteResposta,
     UsuarioResposta,
+    ajustar_limite_usuarios,
 )
 from app.services.usuario_service import UsuarioService
 
@@ -20,8 +25,31 @@ Servico = Annotated[UsuarioService, Depends(usuario_service)]
 
 
 @router.get("/usuarios", response_model=list[UsuarioResposta])
-def listar(_: Administrador, servico: Servico) -> list[UsuarioResposta]:
-    return servico.listar_ativos()
+def listar(
+    _: Administrador,
+    servico: Servico,
+    busca: Annotated[str | None, Query(max_length=150, description="Texto livre em nome ou e-mail")] = None,
+    perfil: Perfil | None = None,
+    limite: Annotated[int, Query(description=f"1 a {LIMITE_MAXIMO_USUARIOS}; fora disso é ajustado")] = LIMITE_PADRAO_USUARIOS,
+    pagina: Annotated[int, Query(ge=1, description="Página da listagem (a partir de 1)")] = 1,
+) -> list[UsuarioResposta]:
+    return servico.listar_ativos(
+        busca=busca,
+        perfil=perfil,
+        limite=ajustar_limite_usuarios(limite),
+        pagina=pagina,
+    )
+
+
+# Declarada antes de /usuarios/{usuario_id} para "resumo" não ser lido como UUID.
+@router.get("/usuarios/resumo", response_model=ResumoUsuariosResposta)
+def resumir(
+    _: Administrador,
+    servico: Servico,
+    busca: Annotated[str | None, Query(max_length=150, description="Texto livre em nome ou e-mail")] = None,
+    perfil: Perfil | None = None,
+) -> ResumoUsuariosResposta:
+    return servico.resumir_ativos(busca=busca, perfil=perfil)
 
 
 @router.get("/usuarios/segurancas", response_model=list[UsuarioResposta])
