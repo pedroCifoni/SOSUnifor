@@ -27,8 +27,11 @@ class UsuarioService:
     def listar_ativos(self) -> list[UsuarioResposta]:
         return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos()]
 
-    def listar_por_perfil(self, perfil: str) -> list[UsuarioResposta]:
-        return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos_por_perfil(perfil)]
+    def listar_por_perfil(self, perfil: str, com_email: bool = False) -> list[UsuarioResposta]:
+        return [
+            UsuarioResposta.de_entidade(usuario, com_email=com_email)
+            for usuario in self.usuarios.listar_ativos_por_perfil(perfil)
+        ]
 
     def listar_segurancas_notificadas(self) -> list[SegurancaNotificadaResposta]:
         """Equipe de segurança acionada em um SOS. Viatura e distância ainda são simuladas."""

@@ -82,6 +82,15 @@ class OcorrenciaRepository:
         maior = max((int(p.rsplit("-", 1)[-1]) for p in numeros if p.rsplit("-", 1)[-1].isdigit()), default=0)
         return maior + 1
 
+    def listar_do_autor(self, autor_id: UUID) -> list[Ocorrencia]:
+        """Todas as ocorrências abertas pela pessoa, inclusive as anônimas (exportação dos dados do titular)."""
+        consulta = (
+            select(Ocorrencia)
+            .where(Ocorrencia.autor_id == autor_id)
+            .order_by(Ocorrencia.criado_em.desc(), Ocorrencia.id.desc())
+        )
+        return list(self.sessao.scalars(consulta))
+
     def protocolo_existe(self, protocolo: str) -> bool:
         return self.sessao.scalar(select(Ocorrencia.id).where(Ocorrencia.protocolo == protocolo).limit(1)) is not None
 

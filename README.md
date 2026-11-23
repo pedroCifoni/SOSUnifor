@@ -192,6 +192,7 @@ SMTP_REMETENTE=Uni SOS <seu-email@gmail.com>
 | `VITE_API_URL` | URL base da API, sem barra no final |
 | `VITE_SOS_USAR_GPS` | `true` faz o SOS usar o GPS real. Sem ela, o SOS usa um ponto fixo no Bloco C, para testes fora do campus. |
 | `VITE_MAP_STYLE_URL` | Opcional. Estilo de mapa do provedor da instituição. |
+| `VITE_CONTATO_DPO` | E-mail do encarregado de dados (LGPD) exibido na Política de Privacidade (`/privacidade`). Sem ela, aparece um endereço provisório marcado como "a definir". |
 
 Variáveis `VITE_*` entram no código no momento do build e ficam públicas. Depois de alterá-las na Vercel, faça um novo deploy.
 
@@ -233,6 +234,13 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 | `SMTP_REMETENTE` | Remetente exibido nos e-mails (ex.: `Uni SOS <nao-responda@unifor.br>`). |
 | `SMTP_STARTTLS` | `true` para negociar TLS na porta 587 (`false` no Mailpit). |
 | `SMTP_SSL` | `true` para SMTP sobre SSL direto (porta 465). Padrão: `false`. |
+
+**Privacidade (LGPD)**: veja [docs/LGPD.md](docs/LGPD.md).
+
+| Variável | Descrição |
+|---|---|
+| `RETENCAO_NOTIFICACOES_LIDAS_DIAS` | Notificações já lidas são apagadas depois destes dias (rotina executada a cada subida da API). Padrão: `180`. |
+| `RETENCAO_TOKENS_VENCIDOS_HORAS` | Links de redefinição de senha vencidos são apagados depois destas horas além do vencimento. Padrão: `24`. |
 
 ## Deploy
 

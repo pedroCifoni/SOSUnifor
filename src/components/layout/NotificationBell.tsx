@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, CheckCircle2, Siren, Send, SquarePlus, type LucideIcon } from 'lucide-react'
+import { Bell, CheckCircle2, ShieldCheck, Siren, Send, SquarePlus, type LucideIcon } from 'lucide-react'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
 import type { TipoNotificacao } from '@/models/notificacao'
 import { tempoRelativo } from '@/utils/format'
@@ -9,6 +9,7 @@ const ICONES: Record<TipoNotificacao, LucideIcon> = {
   encaminhada: Send,
   concluida: CheckCircle2,
   alerta: Siren,
+  privacidade: ShieldCheck,
 }
 
 export function NotificationBell() {

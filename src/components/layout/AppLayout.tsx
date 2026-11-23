@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, Wrench, X } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, ShieldCheck, Wrench, X } from 'lucide-react'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { AvisoTermos } from '@/components/privacidade/AvisoTermos'
 import { useAuth } from '@/hooks/useAuth'
 import { iniciais } from '@/utils/format'
 
@@ -42,6 +43,7 @@ export function AppLayout() {
           { to: '/admin/areas-campus', label: 'Áreas do Campus', icon: MapPinned },
         ]
       : []),
+    { to: '/privacidade', label: 'Privacidade e seus dados', icon: ShieldCheck },
   ]
 
   function sair() {
@@ -86,6 +88,8 @@ export function AppLayout() {
       <main className="flex-1 px-4 py-5 md:px-8">
         <Outlet />
       </main>
+
+      <AvisoTermos />
 
       {menuAberto && (
         <div className="fixed inset-0 z-30 flex" role="dialog" aria-modal="true">

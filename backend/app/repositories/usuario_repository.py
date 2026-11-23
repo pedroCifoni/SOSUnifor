@@ -41,6 +41,15 @@ class UsuarioRepository:
         )
         return list(self.sessao.scalars(consulta))
 
+    def listar_com_exclusao_pendente(self) -> list[Usuario]:
+        """Titulares que pediram a eliminação dos dados e ainda não foram anonimizados."""
+        consulta = (
+            select(Usuario)
+            .where(Usuario.exclusao_solicitada_em.is_not(None), Usuario.anonimizado_em.is_(None))
+            .order_by(Usuario.exclusao_solicitada_em)
+        )
+        return list(self.sessao.scalars(consulta))
+
     def adicionar(self, usuario: Usuario) -> Usuario:
         self.sessao.add(usuario)
         return usuario

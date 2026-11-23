@@ -30,6 +30,13 @@ class Configuracoes(BaseSettings):
     frontend_url: str = "http://localhost:5173"
     redefinicao_senha_expira_minutos: int = 30
 
+    # Retenção (LGPD): rotina executada a cada subida da API (app/services/retencao_service.py).
+    # Notificações já lidas são apagadas depois deste número de dias.
+    retencao_notificacoes_lidas_dias: int = 180
+    # Tokens de redefinição de senha vencidos são apagados depois destas horas além do vencimento.
+    # A folga mantém os pedidos recentes, que contam no limite de "esqueci minha senha" por hora.
+    retencao_tokens_vencidos_horas: int = 24
+
     # E-mail (SMTP). Sem SMTP_HOST, os e-mails são apenas registrados no log da API.
     smtp_host: str = ""
     smtp_port: int = 587

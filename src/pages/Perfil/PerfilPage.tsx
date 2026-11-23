@@ -1,12 +1,32 @@
-import { LogOut, Mail, ShieldCheck, User } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { useState } from 'react'
+import { Download, FileText, LogOut, Mail, ShieldCheck, Trash2, User } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
+import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { useAuth } from '@/hooks/useAuth'
+import { useToast } from '@/hooks/useToast'
 import { PERFIL_LABEL } from '@/models/usuario'
+import { privacidadeService } from '@/services/privacidadeService'
 import { iniciais } from '@/utils/format'
+
+function salvarComoArquivo(conteudo: unknown, nomeArquivo: string) {
+  const blob = new Blob([JSON.stringify(conteudo, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = nomeArquivo
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+}
 
 export function PerfilPage() {
   const { usuario, logout } = useAuth()
   const navigate = useNavigate()
+  const toast = useToast()
+  const [baixando, setBaixando] = useState(false)
+  const [confirmarExclusao, setConfirmarExclusao] = useState(false)
+  const [exclusaoSolicitadaEm, setExclusaoSolicitadaEm] = useState<string | null>(null)
 
   if (!usuario) return null
 
@@ -16,6 +36,30 @@ export function PerfilPage() {
   function sair() {
     logout()
     navigate('/login', { replace: true })
+  }
+
+  async function baixarMeusDados() {
+    setBaixando(true)
+    try {
+      const dados = await privacidadeService.exportarDados()
+      salvarComoArquivo(dados, `meus-dados-unisos-${new Date().toISOString().slice(0, 10)}.json`)
+      toast.sucesso('Arquivo com os seus dados gerado.')
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Não foi possível gerar o arquivo.')
+    } finally {
+      setBaixando(false)
+    }
+  }
+
+  async function solicitarExclusao() {
+    setConfirmarExclusao(false)
+    try {
+      const resposta = await privacidadeService.solicitarExclusao()
+      setExclusaoSolicitadaEm(resposta.solicitadaEm)
+      toast.sucesso(resposta.mensagem)
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Não foi possível registrar o pedido.')
+    }
   }
 
   return (
@@ -60,6 +104,51 @@ export function PerfilPage() {
           </div>
         </div>
       </dl>
+
+      <section className="space-y-1 rounded-2xl border border-line bg-white p-4 shadow-sm">
+        <h3 className="mb-2 flex items-center gap-2 text-sm font-bold text-brand-900">
+          <ShieldCheck size={16} className="text-brand-500" /> Privacidade e seus dados (LGPD)
+        </h3>
+        <Link
+          to="/privacidade"
+          className="flex h-11 items-center gap-2 rounded-xl px-3 text-sm font-medium text-brand-900 hover:bg-surface"
+        >
+          <FileText size={18} className="text-brand-500" /> Política de Privacidade
+        </Link>
+        <button
+          onClick={() => void baixarMeusDados()}
+          disabled={baixando}
+          className="flex h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-medium text-brand-900 hover:bg-surface disabled:opacity-60"
+        >
+          <Download size={18} className="text-brand-500" /> {baixando ? 'Gerando arquivo…' : 'Baixar meus dados (.json)'}
+        </button>
+        {exclusaoSolicitadaEm ? (
+          <p className="rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-900">
+            Pedido de exclusão registrado em {new Date(exclusaoSolicitadaEm).toLocaleString('pt-BR')}. A administração
+            vai concluí-lo; depois disso esta conta deixa de funcionar.
+          </p>
+        ) : (
+          <button
+            onClick={() => setConfirmarExclusao(true)}
+            className="flex h-11 w-full items-center gap-2 rounded-xl px-3 text-left text-sm font-medium text-sos-700 hover:bg-sos-50"
+          >
+            <Trash2 size={18} /> Solicitar exclusão dos meus dados
+          </button>
+        )}
+      </section>
+
+      {confirmarExclusao && (
+        <ConfirmModal
+          titulo="Solicitar a exclusão dos seus dados?"
+          confirmarLabel="Sim, solicitar"
+          onCancel={() => setConfirmarExclusao(false)}
+          onConfirm={() => void solicitarExclusao()}
+        >
+          A administração será avisada e vai anonimizar a sua conta: o seu nome e e-mail serão apagados de forma
+          irreversível e você não conseguirá mais entrar. As ocorrências que você abriu continuam guardadas como registro
+          de segurança, sem identificar você. Se quiser, baixe antes uma cópia dos seus dados.
+        </ConfirmModal>
+      )}
 
       <button
         onClick={sair}

@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, tuple_, update
+from sqlalchemy import delete, func, select, tuple_, update
 from sqlalchemy.orm import Session
 
 from app.entities.notificacao import Notificacao
@@ -48,3 +48,14 @@ class NotificacaoRepository:
             .values(lida=True)
             .execution_options(synchronize_session=False)
         )
+
+    def listar_todas_do_destinatario(self, destinatario_id: UUID) -> list[Notificacao]:
+        consulta = (
+            select(Notificacao)
+            .where(Notificacao.destinatario_id == destinatario_id)
+            .order_by(Notificacao.criada_em.desc(), Notificacao.id.desc())
+        )
+        return list(self.sessao.scalars(consulta))
+
+    def apagar_do_destinatario(self, destinatario_id: UUID) -> None:
+        self.sessao.execute(delete(Notificacao).where(Notificacao.destinatario_id == destinatario_id))

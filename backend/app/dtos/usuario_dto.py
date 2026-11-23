@@ -48,12 +48,18 @@ class UsuarioLoteEntrada(BaseModel):
 class UsuarioResposta(RespostaDTO):
     id: str
     nome: str
-    email: str
+    # Minimização (LGPD, art. 6º, III): o e-mail de outras pessoas só vai para o administrador.
+    email: str | None
     perfil: str
 
     @classmethod
-    def de_entidade(cls, usuario: Usuario) -> "UsuarioResposta":
-        return cls(id=str(usuario.id), nome=usuario.nome, email=usuario.email, perfil=usuario.tipo_usuario)
+    def de_entidade(cls, usuario: Usuario, com_email: bool = True) -> "UsuarioResposta":
+        return cls(
+            id=str(usuario.id),
+            nome=usuario.nome,
+            email=usuario.email if com_email else None,
+            perfil=usuario.tipo_usuario,
+        )
 
 
 class UsuarioLoteResposta(RespostaDTO):

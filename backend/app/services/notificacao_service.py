@@ -44,7 +44,7 @@ class NotificacaoService:
         tipo: str,
         titulo: str,
         mensagem: str,
-        ocorrencia_id: UUID,
+        ocorrencia_id: UUID | None,
         ignorar_usuario_id: UUID | None = None,
     ) -> None:
         """Cria uma notificação por destinatário (sem repetir), sem notificar quem fez a ação."""

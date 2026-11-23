@@ -85,6 +85,11 @@ export function LoginPage() {
         <p className="mt-6 text-center text-[11px] text-muted">
           Diretoria de Tecnologia da Informação · UNIFOR
         </p>
+        <p className="mt-2 text-center text-[11px]">
+          <Link to="/privacidade" className="font-semibold text-brand-500 hover:text-brand-900">
+            Política de Privacidade
+          </Link>
+        </p>
       </div>
     </div>
   )

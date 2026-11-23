@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.orm import Session
 
 from app.entities.evento_ocorrencia import EventoOcorrencia
@@ -20,3 +20,24 @@ class EventoOcorrenciaRepository:
             .order_by(EventoOcorrencia.criado_em)
         )
         return list(self.sessao.scalars(consulta))
+
+    def listar_das_ocorrencias(self, ocorrencia_ids: list[UUID]) -> list[EventoOcorrencia]:
+        if not ocorrencia_ids:
+            return []
+        consulta = (
+            select(EventoOcorrencia)
+            .where(EventoOcorrencia.ocorrencia_id.in_(ocorrencia_ids))
+            .order_by(EventoOcorrencia.criado_em)
+        )
+        return list(self.sessao.scalars(consulta))
+
+    def substituir_nas_descricoes(self, trecho: str, substituto: str) -> None:
+        """Troca um texto (ex.: o nome de um titular anonimizado) em todas as descrições que o contêm."""
+        if not trecho:
+            return
+        self.sessao.execute(
+            update(EventoOcorrencia)
+            .where(EventoOcorrencia.descricao.contains(trecho, autoescape=True))
+            .values(descricao=func.replace(EventoOcorrencia.descricao, trecho, substituto))
+            .execution_options(synchronize_session=False)
+        )

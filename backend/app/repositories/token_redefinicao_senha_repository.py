@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.entities.token_redefinicao_senha import TokenRedefinicaoSenha
@@ -35,3 +35,6 @@ class TokenRedefinicaoSenhaRepository:
     def adicionar(self, token: TokenRedefinicaoSenha) -> TokenRedefinicaoSenha:
         self.sessao.add(token)
         return token
+
+    def apagar_do_usuario(self, usuario_id: UUID) -> None:
+        self.sessao.execute(delete(TokenRedefinicaoSenha).where(TokenRedefinicaoSenha.usuario_id == usuario_id))

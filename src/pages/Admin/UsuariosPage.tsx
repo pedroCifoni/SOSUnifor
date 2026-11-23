@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { PedidosExclusao } from '@/components/privacidade/PedidosExclusao'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { UsuarioFormModal } from '@/components/usuarios/UsuarioFormModal'
 import { useAuth } from '@/hooks/useAuth'
@@ -134,6 +135,13 @@ export function UsuariosPage() {
           <Plus size={16} /> Novo usuário
         </button>
       </div>
+
+      <PedidosExclusao
+        onAnonimizado={(id) => {
+          setSalvos((atual) => atual?.filter((u) => u.id !== id) ?? atual)
+          setRascunho((atual) => atual.filter((r) => r.id !== id))
+        }}
+      />
 
       {erroCarregamento && (
         <section className="rounded-2xl border border-sos-200 bg-sos-50 p-4 text-sm text-sos-700" role="alert">
