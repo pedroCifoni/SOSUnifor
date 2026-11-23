@@ -118,6 +118,8 @@ INDICES_DE_CONSULTA = [
     # Busca funcional case-insensitive por nome e e-mail (independe de extensões).
     "CREATE INDEX IF NOT EXISTS ix_credentials_nome_lower ON credentials (lower(nome))",
     "CREATE INDEX IF NOT EXISTS ix_credentials_email_lower ON credentials (lower(email))",
+    # Trilha de auditoria (GET /auditoria): ordem e cursor (ocorrido_em, id).
+    "CREATE INDEX IF NOT EXISTS ix_auditoria_ocorrido_em_id ON auditoria (ocorrido_em DESC, id DESC)",
 ]
 
 def criar_indices_de_consulta() -> None:

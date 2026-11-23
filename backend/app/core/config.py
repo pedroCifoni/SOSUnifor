@@ -25,6 +25,8 @@ class Configuracoes(BaseSettings):
     access_token_expire_minutes: int = 60
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     rabbitmq_url: str = "amqp://unisos:uni12345@localhost:5672/"
+    # Aspecto medir_desempenho: chamadas de service acima deste tempo são registradas no log.
+    desempenho_limite_ms: int = 500
 
     # Endereço público do front-end, usado para montar os links enviados por e-mail.
     frontend_url: str = "http://localhost:5173"

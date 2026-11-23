@@ -5,6 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.aspectos import auditar, campos, medir_desempenho, publicar_evento
 from app.core.excecoes import AcessoNegadoErro, NaoEncontradoErro, RegraDeNegocioErro
 from app.dtos.ocorrencia_dto import (
     CursorPagina,
@@ -59,6 +60,7 @@ class OcorrenciaService:
         self.avisar = avisar
 
     # ---------- consultas ----------
+    @medir_desempenho(limite_ms=300)  # listagem é o caminho mais usado: limite mais apertado que o padrão
     def listar(
         self,
         usuario: Usuario,
@@ -112,6 +114,22 @@ class OcorrenciaService:
         return usuario.tipo_usuario == "admin" or usuario.id in {ocorrencia.autor_id, ocorrencia.responsavel_id}
 
     # ---------- abertura ----------
+    @auditar(
+        "ocorrencia.criar",
+        entidade="ocorrencia",
+        entidade_id="resultado.id",
+        ator="autor.id",
+        anonimo_se="dados.anonima",
+        detalhes=campos(tipo="dados.tipo", protocolo="resultado.protocolo", anonima="dados.anonima"),
+    )
+    @publicar_evento(
+        "ocorrencia.criada",
+        entidade="ocorrencia",
+        entidade_id="resultado.id",
+        ator="autor.id",
+        anonimo_se="dados.anonima",
+        dados=campos(tipo_ocorrencia="dados.tipo", protocolo="resultado.protocolo", status="resultado.status"),
+    )
     def criar(self, dados: OcorrenciaEntrada, autor: Usuario) -> OcorrenciaResposta:
         if (dados.latitude is None) != (dados.longitude is None):
             raise RegraDeNegocioErro("Envie latitude e longitude juntas.")
@@ -202,6 +220,20 @@ class OcorrenciaService:
         raise RegraDeNegocioErro("Não foi possível gerar o protocolo. Tente novamente.")
 
     # ---------- atendimento ----------
+    @auditar(
+        "ocorrencia.encaminhar",
+        entidade="ocorrencia",
+        entidade_id="ocorrencia_id",
+        ator="administrador.id",
+        detalhes=campos(responsavel_id="dados.responsavel_id"),
+    )
+    @publicar_evento(
+        "ocorrencia.encaminhada",
+        entidade="ocorrencia",
+        entidade_id="ocorrencia_id",
+        ator="administrador.id",
+        dados=campos(tipo_ocorrencia="resultado.tipo", responsavel_id="resultado.responsavel_id", status="resultado.status"),
+    )
     def encaminhar(self, ocorrencia_id: UUID, dados: EncaminhamentoEntrada, administrador: Usuario) -> OcorrenciaResposta:
         """O administrador encaminha manutenção para um técnico e SOS/denúncia para a Equipe de Segurança."""
         ocorrencia = self.ocorrencias.buscar_por_id(ocorrencia_id)
@@ -244,6 +276,20 @@ class OcorrenciaService:
         self.sessao.refresh(ocorrencia)
         return OcorrenciaResposta.de_entidade(ocorrencia, self._solicitante_do_banco(ocorrencia))
 
+    @auditar(
+        "ocorrencia.mudar_status",
+        entidade="ocorrencia",
+        entidade_id="ocorrencia_id",
+        ator="usuario.id",
+        detalhes=campos(status="dados.status"),
+    )
+    @publicar_evento(
+        "ocorrencia.status_alterado",
+        entidade="ocorrencia",
+        entidade_id="ocorrencia_id",
+        ator="usuario.id",
+        dados=campos(tipo_ocorrencia="resultado.tipo", status="resultado.status"),
+    )
     def atualizar_status(self, ocorrencia_id: UUID, dados: StatusEntrada, usuario: Usuario) -> OcorrenciaResposta:
         ocorrencia = self.buscar_acessivel(ocorrencia_id, usuario)
         if not self._pode_mudar_status(ocorrencia, usuario, dados.status):

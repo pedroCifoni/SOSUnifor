@@ -62,7 +62,7 @@ export const usuarioService = {
     return http.post<{ mensagem: string }>(`/usuarios/${id}/reenviar-verificacao`)
   },
 
-  salvarLote(dados: LoteUsuarios): Promise<{ criadas: number; atualizadas: number; excluidas: number }> {
+  salvarLote(dados: LoteUsuarios): Promise<{ criadas: number; atualizadas: number; excluidas: number; idsCriados: string[] }> {
     return http.post('/usuarios/lote', dados)
   },
 }

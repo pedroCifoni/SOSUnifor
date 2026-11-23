@@ -221,7 +221,8 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 | `DB_POOL_TIMEOUT` | Segundos aguardando uma conexão livre do pool antes de responder erro. Padrão: `10`. |
 | `DB_POOL_RECYCLE` | Segundos até reciclar uma conexão (importante no Neon, que encerra conexões ociosas). Padrão: `300`. |
 | `DB_PREPARED_STATEMENTS` | Padrão: `true`. Defina como `false` se o pooler em modo transação (PgBouncer/Neon `-pooler`) reclamar de prepared statements. |
-| `RABBITMQ_URL` | Broker que distribui os avisos em tempo real entre as instâncias da API. Em dev: o RabbitMQ do docker-compose (`amqp://unisos:uni12345@localhost:5672/`); em produção: URL `amqps://` do CloudAMQP. Sem broker, cada processo avisa só as suas conexões. |
+| `RABBITMQ_URL` | Broker que distribui os avisos em tempo real entre as instâncias da API. Em dev: o RabbitMQ do docker-compose (`amqp://unisos:uni12345@localhost:5672/`); em produção: URL `amqps://` do CloudAMQP. Também transporta os eventos de domínio e de auditoria (exchange `unisos.eventos`, veja [docs/POA-e-eventos.md](docs/POA-e-eventos.md)). Sem broker, cada processo avisa só as suas conexões e a auditoria é gravada direto no banco. |
+| `DESEMPENHO_LIMITE_MS` | Opcional (padrão 500). Chamadas de service mais lentas que isso são registradas no log `app.desempenho` pelo aspecto `medir_desempenho`. |
 
 **E-mail (SMTP)**
 

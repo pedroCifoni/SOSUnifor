@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.aspectos import auditar, campos, nomes_dos_campos_enviados
 from app.core.excecoes import ConflitoErro, NaoEncontradoErro, RegraDeNegocioErro
 from app.core.seguranca import gerar_hash_senha
 from app.dtos.auth_dto import MensagemResposta
@@ -12,6 +13,7 @@ from app.dtos.usuario_dto import (
     SegurancaNotificadaResposta,
     UsuarioAdminResposta,
     UsuarioAtualizacao,
+    UsuarioAtualizacaoLote,
     UsuarioEntrada,
     UsuarioLoteEntrada,
     UsuarioLoteResposta,
@@ -22,6 +24,33 @@ from app.repositories.token_redefinicao_senha_repository import TokenRedefinicao
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.email_service import EmailService
 from app.services.verificacao_email_service import VerificacaoEmailService
+
+
+def _campos_alterados_no_lote(atualizacao: UsuarioAtualizacaoLote) -> str:
+    """Nomes (nunca valores) dos campos que o lote alterou; senha vazia é ignorada pelo service."""
+    enviados = atualizacao.model_dump(exclude={"id"}, exclude_unset=True)
+    if not enviados.get("senha"):
+        enviados.pop("senha", None)
+    return ",".join(sorted(enviados))
+
+
+def _itens_do_lote(dados: UsuarioLoteEntrada, resultado: UsuarioLoteResposta) -> list[dict]:
+    """Um registro de auditoria por conta afetada pelo lote, com o mesmo vocabulário das rotas individuais."""
+    return [
+        *(
+            {"acao": "usuario.criar", "entidade_id": usuario_id, "detalhes": {"perfil": criacao.perfil}}
+            for usuario_id, criacao in zip(resultado.ids_criados, dados.criacoes)
+        ),
+        *(
+            {
+                "acao": "usuario.editar",
+                "entidade_id": atualizacao.id,
+                "detalhes": {"campos_alterados": _campos_alterados_no_lote(atualizacao)},
+            }
+            for atualizacao in dados.atualizacoes
+        ),
+        *({"acao": "usuario.excluir", "entidade_id": usuario_id, "detalhes": {}} for usuario_id in dados.exclusoes),
+    ]
 
 
 class UsuarioService:
@@ -69,6 +98,8 @@ class UsuarioService:
         ]
 
     # ---------- comandos ----------
+    # Sem "ator": quem cria é o administrador autenticado na requisição (contexto do aspecto HTTP).
+    @auditar("usuario.criar", entidade="usuario", entidade_id="resultado.id", detalhes=campos(perfil="dados.perfil"))
     def criar(self, dados: UsuarioEntrada) -> UsuarioAdminResposta:
         usuario = self._novo_usuario(dados)
         self.sessao.flush()
@@ -78,6 +109,13 @@ class UsuarioService:
         self._enviar_acesso(usuario, dados.senha, token)
         return UsuarioAdminResposta.de_entidade(usuario)
 
+    @auditar(
+        "usuario.editar",
+        entidade="usuario",
+        entidade_id="usuario_id",
+        ator="administrador.id",
+        detalhes=nomes_dos_campos_enviados("dados"),
+    )
     def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioAdminResposta:
         usuario = self._buscar_ativo(usuario_id)
         novos_dados = dados.model_dump(exclude_unset=True)
@@ -92,10 +130,22 @@ class UsuarioService:
     def reenviar_verificacao(self, usuario_id: UUID) -> MensagemResposta:
         return self.verificacao.reenviar_pelo_admin(self._buscar_ativo(usuario_id))
 
+    @auditar("usuario.excluir", entidade="usuario", entidade_id="usuario_id", ator="administrador.id")
     def excluir(self, usuario_id: UUID, administrador: Usuario) -> None:
         self._desativar(self._buscar_ativo(usuario_id), administrador)
         self.sessao.commit()
 
+    @auditar(
+        "usuario.salvar_em_lote",
+        entidade="usuario",
+        ator="administrador.id",
+        detalhes=lambda ponto, _: {
+            "criacoes": len(ponto.resolver("dados.criacoes") or []),
+            "atualizacoes": len(ponto.resolver("dados.atualizacoes") or []),
+            "exclusoes": len(ponto.resolver("dados.exclusoes") or []),
+        },
+        itens=lambda ponto, resultado: _itens_do_lote(ponto.resolver("dados"), resultado),
+    )
     def salvar_em_lote(self, dados: UsuarioLoteEntrada, administrador: Usuario) -> UsuarioLoteResposta:
         """Aplica o rascunho do painel administrativo em uma única transação: tudo ou nada."""
         # O banco só enxerga as contas novas depois do flush; por isso e-mails repetidos dentro
@@ -127,7 +177,10 @@ class UsuarioService:
             self._enviar_acesso(usuario, senha, token)
         self._enviar_confirmacoes_pendentes()
         return UsuarioLoteResposta(
-            criadas=len(dados.criacoes), atualizadas=len(dados.atualizacoes), excluidas=len(dados.exclusoes)
+            criadas=len(dados.criacoes),
+            atualizadas=len(dados.atualizacoes),
+            excluidas=len(dados.exclusoes),
+            ids_criados=[str(usuario.id) for usuario, _, _ in criados],
         )
 
     # ---------- regras ----------
