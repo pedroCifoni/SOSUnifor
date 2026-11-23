@@ -66,7 +66,7 @@ A API cria as tabelas e os usuários iniciais sozinha na primeira vez que sobe, 
 │   ├── pages/                        # Telas por perfil e funcionalidade
 │   ├── routes/                       # Rotas e proteção por perfil
 │   └── services/                     # Chamadas à API por recurso
-├── backend/services/auth-service/    # API FastAPI
+├── backend/                          # API FastAPI
 │   ├── app/
 │   │   ├── controllers/              # Rotas HTTP e WebSocket: recebem a requisição e chamam o service
 │   │   ├── services/                 # Regras de negócio e controle da transação
@@ -76,8 +76,7 @@ A API cria as tabelas e os usuários iniciais sozinha na primeira vez que sobe, 
 │   │   ├── core/                     # Configuração, banco, segurança/JWT, erros e WebSocket
 │   │   └── main.py                   # Monta a aplicação
 │   ├── scripts/                      # Tarefas manuais (importar áreas do OSM, testar conexão)
-│   ├── testes/                       # Testes HTTP de ponta a ponta
-│   └── alembic/                      # Migrações
+│   └── testes/                       # Testes HTTP de ponta a ponta
 ├── docker-compose.yml                # PostgreSQL para desenvolvimento local
 ├── vercel.json                       # Rewrite da SPA na Vercel
 └── docs/                             # Documentação do projeto
@@ -109,7 +108,7 @@ docker compose up -d
 **2. API**, em `http://127.0.0.1:8000`
 
 ```powershell
-cd backend\services\auth-service
+cd backend
 Copy-Item .env.example .env
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
@@ -153,7 +152,7 @@ A API cria estas contas quando elas ainda não existem. A senha inicial é `1234
 
 Variáveis `VITE_*` entram no código no momento do build e ficam públicas. Depois de alterá-las na Vercel, faça um novo deploy.
 
-**API** (`backend/services/auth-service/.env`, ou Environment no Render)
+**API** (`backend/.env`, ou Environment no Render)
 
 | Variável | Descrição |
 |---|---|
@@ -170,7 +169,7 @@ Com `AMBIENTE=producao`, a API se recusa a iniciar se a `JWT_SECRET` for fraca, 
 | Serviço | Configuração |
 |---|---|
 | **Neon** | Use a connection string *sem* connection pooling e troque o prefixo por `postgresql+psycopg://` |
-| **Render** | Web Service · Root Directory `backend/services/auth-service` · Build `pip install -r requirements.txt` · Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT` · `PYTHON_VERSION=3.12.7` |
+| **Render** | Web Service · Root Directory `backend` · Build `pip install -r requirements.txt` · Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT` · `PYTHON_VERSION=3.12.7` |
 | **Vercel** | Framework Vite na raiz do repositório · `VITE_API_URL` apontando para o Render |
 
 Um push na `main` atualiza o front e a API.

@@ -1,5 +1,6 @@
 import { useEffect, useId, useMemo, type ChangeEvent, type ReactNode } from 'react'
 import { X } from 'lucide-react'
+import { ImagemAmpliavel } from '@/components/ui/ImagemAmpliavel'
 
 interface FileUploadProps {
   label: string
@@ -40,13 +41,13 @@ export function FileUpload({ label, icon, texto, accept, multiple, arquivos, onC
       </label>
 
       {previews.length > 0 && (
-        <ul className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+        <ul className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
           {previews.map(({ file, url }, i) => (
             <li key={`${file.name}-${i}`} className="relative overflow-hidden rounded-lg border border-line bg-white">
               {url ? (
-                <img src={url} alt={file.name} className="h-20 w-full object-cover" />
+                <ImagemAmpliavel src={url} alt={file.name} className="h-40" />
               ) : (
-                <div className="grid h-20 place-items-center px-2 text-center text-[11px] text-muted">{file.name}</div>
+                <div className="grid h-40 place-items-center px-2 text-center text-[11px] text-muted">{file.name}</div>
               )}
               <button
                 type="button"
