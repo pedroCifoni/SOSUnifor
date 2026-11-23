@@ -6,6 +6,7 @@ from app.controllers import (
     auth_controller,
     notificacao_controller,
     ocorrencia_controller,
+    privacidade_controller,
     saude_controller,
     tempo_real_controller,
     usuario_controller,
@@ -18,6 +19,7 @@ routers = [
     ocorrencia_controller.router,
     notificacao_controller.router,
     arquivo_controller.router,
+    privacidade_controller.router,
     tempo_real_controller.router,
     saude_controller.router,
 ]

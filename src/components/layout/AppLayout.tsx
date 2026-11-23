@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, Wrench, X } from 'lucide-react'
+import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, ShieldCheck, Wrench, X } from 'lucide-react'
+import { AvisoPrivacidade } from '@/components/layout/AvisoPrivacidade'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { useAuth } from '@/hooks/useAuth'
 import { iniciais } from '@/utils/format'
@@ -87,6 +88,8 @@ export function AppLayout() {
         <Outlet />
       </main>
 
+      <AvisoPrivacidade />
+
       {menuAberto && (
         <div className="fixed inset-0 z-30 flex" role="dialog" aria-modal="true">
           <nav className="flex w-72 max-w-[85%] flex-col gap-1 bg-white p-4 shadow-xl">
@@ -113,9 +116,16 @@ export function AppLayout() {
                 <Icon size={18} /> {label}
               </NavLink>
             ))}
+            <Link
+              to="/privacidade"
+              onClick={() => setMenuAberto(false)}
+              className="mt-auto flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-ink hover:bg-surface"
+            >
+              <ShieldCheck size={18} /> Política de Privacidade
+            </Link>
             <button
               onClick={sair}
-              className="mt-auto flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-sos-700 hover:bg-sos-50"
+              className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-sos-700 hover:bg-sos-50"
             >
               <LogOut size={18} /> Sair
             </button>

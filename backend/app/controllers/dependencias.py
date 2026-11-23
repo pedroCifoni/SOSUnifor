@@ -16,6 +16,7 @@ from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
+from app.services.privacidade_service import PrivacidadeService
 from app.services.usuario_service import UsuarioService
 
 
@@ -64,6 +65,10 @@ def notificacao_service(banco: Banco) -> NotificacaoService:
 
 def arquivo_service(banco: Banco) -> ArquivoService:
     return ArquivoService(banco)
+
+
+def privacidade_service(banco: Banco) -> PrivacidadeService:
+    return PrivacidadeService(banco)
 
 
 # ---------- autenticação ----------

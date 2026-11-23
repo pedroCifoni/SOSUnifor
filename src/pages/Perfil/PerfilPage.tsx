@@ -1,5 +1,5 @@
-import { LogOut, Mail, ShieldCheck, User } from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { ChevronRight, LogOut, Mail, ShieldCheck, User } from 'lucide-react'
+import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/hooks/useAuth'
 import { PERFIL_LABEL } from '@/models/usuario'
 import { iniciais } from '@/utils/format'
@@ -60,6 +60,15 @@ export function PerfilPage() {
           </div>
         </div>
       </dl>
+
+      <Link
+        to="/privacidade"
+        className="flex items-center gap-3 rounded-2xl border border-line bg-white p-4 text-sm font-semibold text-brand-900 shadow-sm hover:bg-brand-50"
+      >
+        <ShieldCheck size={18} className="text-brand-500" />
+        <span className="flex-1">Política de Privacidade</span>
+        <ChevronRight size={18} className="text-muted" />
+      </Link>
 
       <button
         onClick={sair}

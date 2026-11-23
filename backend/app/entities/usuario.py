@@ -20,3 +20,6 @@ class Usuario(Base):
     tipo_usuario: Mapped[str] = mapped_column(String(50), nullable=False, default="aluno")
     ativo: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     ultimo_acesso: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # Última versão da Política de Privacidade de que o usuário declarou ciência, e quando (LGPD, art. 9º).
+    politica_privacidade_versao: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    politica_privacidade_ciente_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
