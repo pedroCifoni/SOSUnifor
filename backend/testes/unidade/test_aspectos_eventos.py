@@ -154,18 +154,84 @@ def test_edicao_exclusao_e_lote_sao_auditados_sem_valores_sensiveis(client: Test
         assert segredo not in tudo
 
 
-def test_redefinir_senha_auditada_com_o_dono_do_link_e_sem_token(client: TestClient, emails) -> None:
+def test_redefinir_senha_auditada_com_o_dono_do_link_e_sem_token(client: TestClient, emails, monkeypatch) -> None:
+    from app.services.auth_service import AuthService
+
+    consultas: list[str] = []
+    original = AuthService.dono_do_link
+    monkeypatch.setattr(AuthService, "dono_do_link", lambda self, token: consultas.append("x") or original(self, token))
+
     client.post("/auth/esqueci-senha", json={"email": "admin@unifor.br"})
     token = re.search(r"token=([A-Za-z0-9_-]+)", emails[0]["texto"] or "").group(1)
     assert client.post("/auth/redefinir-senha", json={"token": token, "nova_senha": "NOVA-SENHA-7"}).status_code == 200
-    assert client.post("/auth/redefinir-senha", json={"token": "link-falso-" + "a" * 40, "nova_senha": "x" * 8}).status_code == 400
+    assert len(consultas) == 1  # o dono do link é consultado uma vez só por chamada
+    # Link já usado: a conta é conhecida, então a tentativa fica na trilha como erro.
+    assert client.post("/auth/redefinir-senha", json={"token": token, "nova_senha": "OUTRA-SENHA-8"}).status_code == 400
+    # Link que nem existe (ex.: script anônimo chutando tokens): não enche a trilha.
+    for _ in range(3):
+        resposta = client.post("/auth/redefinir-senha", json={"token": "link-falso-" + "a" * 40, "nova_senha": "x" * 8})
+        assert resposta.status_code == 400
 
     sucesso, erro = _registros("auditoria.auth.redefinir_senha")
     admin_id = _id_do_usuario("admin@unifor.br")
     assert (sucesso.resultado, sucesso.ator_id, sucesso.entidade_id) == ("sucesso", admin_id, str(admin_id))
-    assert (erro.resultado, erro.ator_id) == ("erro", None)
+    assert (erro.resultado, erro.ator_id, erro.entidade_id) == ("erro", admin_id, str(admin_id))
     tudo = json.dumps([sucesso.dados, erro.dados])
-    assert token not in tudo and "NOVA-SENHA-7" not in tudo and "link-falso" not in tudo
+    assert token not in tudo and "NOVA-SENHA-7" not in tudo and "OUTRA-SENHA-8" not in tudo and "link-falso" not in tudo
+
+
+def test_lote_de_usuarios_audita_cada_conta_afetada(client: TestClient, token_admin: str) -> None:
+    """O painel de usuários só usa POST /usuarios/lote: a trilha precisa dizer QUAIS contas mudaram."""
+    cabecalho = {**_cabecalho(token_admin), "X-Request-ID": "req-lote-1"}
+    editar = client.post(
+        "/usuarios", headers=_cabecalho(token_admin), json={"nome": "Editar", "email": "editar@unifor.br", "perfil": "usuario", "senha": "senha123"}
+    ).json()
+    excluir = client.post(
+        "/usuarios", headers=_cabecalho(token_admin), json={"nome": "Excluir", "email": "excluir@unifor.br", "perfil": "usuario", "senha": "senha123"}
+    ).json()
+    lote = client.post(
+        "/usuarios/lote",
+        headers=cabecalho,
+        json={
+            "criacoes": [{"nome": "Nova", "email": "nova-lote@unifor.br", "perfil": "tecnico", "senha": "SENHA-LOTE"}],
+            "atualizacoes": [{"id": editar["id"], "perfil": "admin", "senha": None, "nome": "Novo Nome"}],
+            "exclusoes": [excluir["id"]],
+        },
+    )
+    assert lote.status_code == 200, lote.text
+    [criado_id] = lote.json()["idsCriados"]
+    assert criado_id == str(_id_do_usuario("nova-lote@unifor.br"))
+
+    admin_id = _id_do_usuario("admin@unifor.br")
+    do_lote = [r for r in _registros() if r.request_id == "req-lote-1"]
+    por_acao = {r.tipo: r for r in do_lote}
+    assert set(por_acao) == {
+        "auditoria.usuario.salvar_em_lote",
+        "auditoria.usuario.criar",
+        "auditoria.usuario.editar",
+        "auditoria.usuario.excluir",
+    }
+    assert all(r.ator_id == admin_id and r.resultado == "sucesso" and r.entidade == "usuario" for r in do_lote)
+    assert por_acao["auditoria.usuario.criar"].entidade_id == criado_id
+    assert por_acao["auditoria.usuario.criar"].dados["detalhes"] == {"perfil": "tecnico"}
+    assert por_acao["auditoria.usuario.editar"].entidade_id == editar["id"]
+    assert por_acao["auditoria.usuario.editar"].dados["detalhes"] == {"campos_alterados": "nome,perfil"}
+    assert por_acao["auditoria.usuario.excluir"].entidade_id == excluir["id"]
+    assert "SENHA-LOTE" not in json.dumps([r.dados for r in do_lote]) and "nova-lote" not in json.dumps([r.dados for r in do_lote])
+
+
+def test_lote_que_falha_nao_registra_itens(client: TestClient, token_admin: str) -> None:
+    resposta = client.post(
+        "/usuarios/lote",
+        headers={**_cabecalho(token_admin), "X-Request-ID": "req-lote-2"},
+        json={
+            "criacoes": [{"nome": "Nova", "email": "nova-falha@unifor.br", "perfil": "usuario", "senha": "senha123"}],
+            "exclusoes": [str(uuid4())],
+        },
+    )
+    assert resposta.status_code == 404
+    [registro] = [r for r in _registros() if r.request_id == "req-lote-2"]
+    assert (registro.tipo, registro.resultado) == ("auditoria.usuario.salvar_em_lote", "erro")
 
 
 def test_falha_na_auditoria_nao_derruba_a_operacao(client: TestClient, token_admin: str, monkeypatch) -> None:
@@ -193,6 +259,35 @@ def test_com_broker_o_evento_vai_para_a_fila_e_nao_para_o_banco(client: TestClie
 def test_sem_broker_publicar_devolve_false() -> None:
     assert eventos.conectado() is False
     assert eventos.publicar(Evento(tipo="ocorrencia.criada")) is False
+
+
+def test_broker_sem_confirmacao_fica_degradado_e_as_proximas_vao_direto_ao_fallback(monkeypatch) -> None:
+    """CloudAMQP degradado (TCP vivo, confirms não chegam): só a primeira publicação espera o timeout."""
+    import threading
+    import time
+
+    loop = asyncio.new_event_loop()
+    threading.Thread(target=loop.run_forever, daemon=True).start()
+    tentativas: list[str] = []
+
+    async def nunca_confirma(evento: Evento) -> None:
+        tentativas.append(evento.tipo)
+        await asyncio.sleep(10)
+
+    monkeypatch.setattr(eventos, "_degradado_ate", 0.0)
+    monkeypatch.setattr(eventos, "_exchange", object())
+    monkeypatch.setattr(eventos, "_loop", loop)
+    monkeypatch.setattr(eventos, "publicar_async", nunca_confirma)
+    monkeypatch.setattr(eventos, "TEMPO_CONFIRMACAO_SEGUNDOS", 0.05)
+    try:
+        assert eventos.publicar(Evento(tipo="ocorrencia.criada")) is False
+        assert eventos.degradado()
+        inicio = time.perf_counter()
+        assert eventos.publicar(Evento(tipo="auditoria.ocorrencia.criar")) is False
+        assert time.perf_counter() - inicio < 0.05
+        assert tentativas == ["ocorrencia.criada"]  # a segunda nem foi ao broker
+    finally:
+        loop.call_soon_threadsafe(loop.stop)
 
 
 def test_services_de_negocio_nao_chamam_auditoria_log_nem_eventos_diretamente() -> None:
@@ -298,9 +393,11 @@ def test_middleware_gera_request_id_e_registra_a_requisicao(client: TestClient, 
 
 # ---------- consumidores ----------
 class MensagemFalsa:
-    def __init__(self, corpo: bytes, redelivered: bool = False) -> None:
+    def __init__(self, corpo: bytes, redelivered: bool = False, headers: dict | None = None) -> None:
         self.body = corpo
         self.message_id = "teste"
+        self.type = "ocorrencia.criada"
+        self.headers = headers or {}
         self.redelivered = redelivered
         self.situacao: str | None = None
 
@@ -332,25 +429,118 @@ def test_mensagem_invalida_vai_para_a_fila_de_mortos_sem_travar(client: TestClie
     assert _registros() == []
 
 
-def test_falha_ao_gravar_tenta_de_novo_uma_vez_e_depois_descarta(client: TestClient, monkeypatch) -> None:
+def test_queda_curta_do_banco_e_coberta_pelas_novas_tentativas_com_espera(client: TestClient, monkeypatch) -> None:
+    from app.services import auditoria_service
+
+    esperas: list[float] = []
+
+    async def esperar(segundos: float) -> None:
+        esperas.append(segundos)
+
+    gravar_de_verdade = auditoria_service.gravar_evento
+    falhas = iter([RuntimeError("banco fora"), RuntimeError("banco fora")])
+
+    def gravar(evento, origem):
+        erro = next(falhas, None)
+        if erro:
+            raise erro
+        return gravar_de_verdade(evento, origem)
+
+    monkeypatch.setattr(eventos, "_esperar", esperar)
+    monkeypatch.setattr("app.services.auditoria_service.gravar_evento", gravar)
+    evento = Evento(tipo="ocorrencia.criada")
+    # Mesmo uma reentrega (ex.: depois de um deploy) ganha todas as tentativas antes da fila de mortos.
+    mensagem = MensagemFalsa(evento.model_dump_json().encode(), redelivered=True)
+    asyncio.run(eventos.consumir_auditoria(mensagem))
+    assert mensagem.situacao == "ack"
+    assert esperas == list(eventos.ESPERAS_NOVA_TENTATIVA_SEGUNDOS[:2])
+    assert [r.id for r in _registros()] == [evento.id]
+
+
+def test_falha_persistente_vai_para_a_fila_de_mortos_depois_de_todas_as_tentativas(client: TestClient, monkeypatch) -> None:
+    chamadas: list[str] = []
+
+    async def esperar(_segundos: float) -> None:
+        return None
+
+    def falhar(*_args):
+        chamadas.append("x")
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(eventos, "_esperar", esperar)
+    monkeypatch.setattr("app.services.auditoria_service.gravar_evento", falhar)
+    mensagem = MensagemFalsa(Evento(tipo="ocorrencia.criada").model_dump_json().encode())
+    asyncio.run(eventos.consumir_auditoria(mensagem))
+    assert mensagem.situacao == "reject(requeue=False)"
+    assert len(chamadas) == len(eventos.ESPERAS_NOVA_TENTATIVA_SEGUNDOS) + 1
+    assert sum(eventos.ESPERAS_NOVA_TENTATIVA_SEGUNDOS) >= 30  # cobre uma queda curta do banco
+
+
+class FilaFalsa:
+    def __init__(self, mensagens: list[MensagemFalsa]) -> None:
+        self.mensagens = list(mensagens)
+        self.declaration_result = type("Declaracao", (), {"message_count": len(mensagens)})()
+
+    async def get(self, no_ack: bool = False, fail: bool = True) -> MensagemFalsa | None:
+        return self.mensagens.pop(0) if self.mensagens else None
+
+
+class CanalFalso:
+    def __init__(self, fila: FilaFalsa) -> None:
+        self.fila = fila
+        self.republicadas: list[tuple[str, object]] = []
+        canal = self
+
+        class ExchangePadrao:
+            async def publish(self, mensagem, routing_key: str) -> None:
+                canal.republicadas.append((routing_key, mensagem))
+                fila.mensagens.append(mensagem)
+
+        self.default_exchange = ExchangePadrao()
+
+    async def declare_queue(self, nome: str, durable: bool = True) -> FilaFalsa:
+        assert nome == eventos.FILA_MORTOS
+        return self.fila
+
+
+def test_reprocessar_mortos_devolve_os_eventos_a_trilha(client: TestClient) -> None:
+    perdidos = [Evento(tipo="auditoria.ocorrencia.criar", dados={"entidade": "ocorrencia", "entidade_id": f"o{i}"}) for i in range(2)]
+    mensagens = [MensagemFalsa(e.model_dump_json().encode()) for e in perdidos] + [MensagemFalsa(b"lixo")]
+    canal = CanalFalso(FilaFalsa(mensagens))
+    resumo = asyncio.run(eventos.reprocessar_mortos(canal))
+    assert resumo == {"regravados": 2, "descartados": 1, "devolvidos": 0}
+    assert all(m.situacao == "ack" for m in mensagens)
+    assert {r.id for r in _registros()} == {e.id for e in perdidos}
+    # Idempotente: reprocessar de novo um evento que já está na trilha não duplica.
+    asyncio.run(eventos.reprocessar_mortos(CanalFalso(FilaFalsa([MensagemFalsa(perdidos[0].model_dump_json().encode())]))))
+    assert len(_registros()) == 2
+
+
+def test_reprocessar_mortos_com_o_banco_ainda_fora_devolve_ao_fim_da_fila_e_para(client: TestClient, monkeypatch) -> None:
     def falhar(*_args):
         raise RuntimeError("banco fora")
 
     monkeypatch.setattr("app.services.auditoria_service.gravar_evento", falhar)
-    corpo = Evento(tipo="ocorrencia.criada").model_dump_json().encode()
-    primeira, segunda = MensagemFalsa(corpo), MensagemFalsa(corpo, redelivered=True)
-    asyncio.run(eventos.consumir_auditoria(primeira))
-    asyncio.run(eventos.consumir_auditoria(segunda))
-    assert primeira.situacao == "nack(requeue=True)"
-    assert segunda.situacao == "reject(requeue=False)"
+    mensagens = [MensagemFalsa(Evento(tipo="ocorrencia.criada").model_dump_json().encode()) for _ in range(3)]
+    canal = CanalFalso(FilaFalsa(mensagens))
+    resumo = asyncio.run(eventos.reprocessar_mortos(canal))
+    assert resumo == {"regravados": 0, "descartados": 0, "devolvidos": 1}
+    [(fila, republicada)] = canal.republicadas
+    assert fila == eventos.FILA_MORTOS
+    assert republicada.body == mensagens[0].body
+    assert republicada.headers[eventos.CABECALHO_REPROCESSAMENTOS] == 1
+    assert mensagens[0].situacao == "ack" and mensagens[1].situacao is None  # a rodada parou
 
 
-def test_consumidor_de_metricas_conta_ocorrencias_por_tipo() -> None:
+def test_consumidor_de_metricas_conta_ocorrencias_por_tipo(caplog) -> None:
     antes = eventos.indicadores.por_tipo_de_ocorrencia["sos"]
     mensagem = MensagemFalsa(Evento(tipo="ocorrencia.criada", dados={"tipo_ocorrencia": "sos"}).model_dump_json().encode())
-    asyncio.run(eventos.consumir_metricas(mensagem))
+    with caplog.at_level(logging.INFO, logger="app.core.eventos"):
+        asyncio.run(eventos.consumir_metricas(mensagem))
     assert mensagem.situacao == "ack"
     assert eventos.indicadores.por_tipo_de_ocorrencia["sos"] == antes + 1
+    # Com vários workers a fila é repartida: o log não pode se passar por total do sistema.
+    assert "parciais" in caplog.text and "processo" in caplog.text
 
 
 # ---------- GET /auditoria ----------

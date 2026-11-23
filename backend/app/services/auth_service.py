@@ -5,7 +5,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.core.aspectos import auditar
+from app.core.aspectos import PontoDeJuncao, auditar
 from app.core.config import configuracoes
 from app.core.excecoes import AcessoNegadoErro, NaoAutenticadoErro, RegraDeNegocioErro
 from app.core.seguranca import conferir_senha, criar_token, gerar_hash_senha, ler_id_do_token
@@ -33,6 +33,10 @@ MENSAGEM_LINK_INVALIDO = "Este link de redefinição é inválido ou expirou. Pe
 
 def _hash_do_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def _dono_do_link(ponto: PontoDeJuncao) -> UUID | None:
+    return ponto.lembrar("dono_do_link", lambda: ponto.instancia.dono_do_link(ponto.resolver("dados.token")))
 
 
 class AuthService:
@@ -78,11 +82,15 @@ class AuthService:
         self.emails.enviar_redefinicao_senha(usuario.nome, usuario.email, token)
         return resposta
 
+    # Rota pública: tentativas com um link que nem existe não são auditadas (ator e entidade
+    # seriam nulos), senão qualquer script anônimo encheria a trilha. O dono do link é
+    # consultado uma vez só por chamada (memória do ponto de junção).
     @auditar(
         "auth.redefinir_senha",
         entidade="usuario",
-        entidade_id=lambda ponto, _: ponto.instancia.dono_do_link(ponto.resolver("dados.token")),
-        ator=lambda ponto, _: ponto.instancia.dono_do_link(ponto.resolver("dados.token")),
+        entidade_id=lambda ponto, _: _dono_do_link(ponto),
+        ator=lambda ponto, _: _dono_do_link(ponto),
+        registrar_se=lambda ponto, _: _dono_do_link(ponto) is not None,
     )
     def redefinir_senha(self, dados: RedefinirSenhaEntrada) -> MensagemResposta:
         agora = datetime.now(timezone.utc)

@@ -60,6 +60,7 @@ class UsuarioLoteResposta(RespostaDTO):
     criadas: int
     atualizadas: int
     excluidas: int
+    ids_criados: list[str] = Field(default_factory=list)
 
 
 class SegurancaNotificadaResposta(RespostaDTO):

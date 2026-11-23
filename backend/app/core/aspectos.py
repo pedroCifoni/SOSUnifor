@@ -25,7 +25,7 @@ import logging
 import re
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 from uuid import UUID
 
@@ -51,10 +51,18 @@ class PontoDeJuncao:
 
     alvo: str  # "Classe.metodo"
     argumentos: dict[str, Any]  # inclui "self"
+    # Valores já calculados pelos extratores deste ponto de junção (evita repetir consultas ao banco).
+    memoria: dict[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
     @property
     def instancia(self) -> Any:
         return self.argumentos.get("self")
+
+    def lembrar(self, chave: str, calcular: Callable[[], Any]) -> Any:
+        """Calcula uma vez por ponto de junção; as chamadas seguintes reaproveitam o valor."""
+        if chave not in self.memoria:
+            self.memoria[chave] = calcular()
+        return self.memoria[chave]
 
     def resolver(self, caminho: str, resultado: Any = None) -> Any:
         """Lê um valor pelo caminho pontuado: "dados.tipo", "administrador.id" ou "resultado.id"."""
@@ -191,12 +199,21 @@ def auditar(
     ator: str | Extrator | None = None,
     anonimo_se: str | None = None,
     detalhes: Extrator | None = None,
+    itens: Extrator | None = None,
+    registrar_se: Extrator | None = None,
 ):
     """Advice "around" que registra quem fez, o quê, quando, sobre qual entidade e o resultado.
 
     O registro vira o evento "auditoria.<acao>" no RabbitMQ (consumido pela fila
     "unisos.auditoria") ou, sem broker, é gravado direto na tabela ``auditoria``.
     Nunca grava os argumentos inteiros: só o que o ponto de corte declarar em ``detalhes``.
+
+    - ``itens``: para operações em lote. Devolve uma lista de
+      ``{"acao": ..., "entidade_id": ..., "detalhes": {...}}``; depois do sucesso, cada item vira
+      um registro próprio ("auditoria.<acao do item>"), além do registro do lote. Assim a trilha
+      diz sobre qual entidade cada criação, edição ou exclusão foi feita.
+    - ``registrar_se``: quando devolve False, nada é registrado (ex.: tentativa anônima com um
+      link de redefinição que nem existe, que só encheria a trilha).
     """
 
     def advice(ponto: PontoDeJuncao, prosseguir: Callable[[], Any]) -> Any:
@@ -210,20 +227,41 @@ def auditar(
         return resultado
 
     def _registrar(ponto: PontoDeJuncao, resultado: Any, situacao: str, inicio: float, erro: str | None) -> None:
-        dados = {
-            "acao": acao,
-            "alvo": ponto.alvo,
-            "entidade": entidade,
-            "entidade_id": _id_texto(_seguro("ler o id da entidade", lambda: _resolver(entidade_id, ponto, resultado))),
-            "resultado": situacao,
-            "duracao_ms": round((time.perf_counter() - inicio) * 1000, 1),
-            "request_id": contexto_requisicao.atual().request_id,
-            "detalhes": sanitizar(_seguro("ler os detalhes", lambda: _resolver(detalhes, ponto, resultado))),
-        }
-        if erro:
-            dados["erro"] = erro
+        if registrar_se is not None and _seguro("avaliar se registra", lambda: registrar_se(ponto, resultado)) is False:
+            return
+        duracao_ms = round((time.perf_counter() - inicio) * 1000, 1)
+        request_id = contexto_requisicao.atual().request_id
         ator_id = _seguro("identificar o ator", lambda: _quem(ator, anonimo_se, ponto, resultado))
-        entregar(Evento(tipo=f"{PREFIXO_AUDITORIA}{acao}", ator_id=ator_id, dados=dados))
+
+        def registro(acao_registrada: str, id_da_entidade: Any, detalhes_registrados: Any) -> Evento:
+            dados = {
+                "acao": acao_registrada,
+                "alvo": ponto.alvo,
+                "entidade": entidade,
+                "entidade_id": _id_texto(id_da_entidade),
+                "resultado": situacao,
+                "duracao_ms": duracao_ms,
+                "request_id": request_id,
+                "detalhes": sanitizar(detalhes_registrados),
+            }
+            if erro:
+                dados["erro"] = erro
+            return Evento(tipo=f"{PREFIXO_AUDITORIA}{acao_registrada}", ator_id=ator_id, dados=dados)
+
+        entregar(
+            registro(
+                acao,
+                _seguro("ler o id da entidade", lambda: _resolver(entidade_id, ponto, resultado)),
+                _seguro("ler os detalhes", lambda: _resolver(detalhes, ponto, resultado)),
+            )
+        )
+        if itens is None or situacao != "sucesso":
+            return  # lote que falhou não gravou nada (tudo ou nada): basta o registro do lote
+        for item in _seguro("ler os itens", lambda: _resolver(itens, ponto, resultado)) or []:
+            _seguro(
+                f"auditar o item {item.get('acao')}",
+                lambda item=item: entregar(registro(item["acao"], item.get("entidade_id"), item.get("detalhes"))),
+            )
 
     return _aplicar_advice("auditar", advice)
 

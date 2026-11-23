@@ -128,6 +128,18 @@ Pontos de corte aplicados hoje:
 | `AspectoHttp` | toda requisição HTTP e WebSocket |
 | `FiltroDadosSensiveis` | loggers raiz, `uvicorn`, `uvicorn.access`, `uvicorn.error`, `app`, `httpx` |
 
+Dois parâmetros do `@auditar` cobrem casos especiais:
+
+- `itens` (operações em lote): o painel de usuários salva tudo por `POST /usuarios/lote`.
+  Além do registro `auditoria.usuario.salvar_em_lote` (com as contagens), cada conta afetada
+  gera o seu próprio `auditoria.usuario.criar` / `.editar` / `.excluir`, com o id da conta em
+  `entidade_id` e, na edição, os NOMES dos campos alterados (nunca os valores). Todos têm o
+  mesmo `request_id`. Lote que falha não gravou nada (tudo ou nada): fica só o registro do lote.
+- `registrar_se`: `POST /auth/redefinir-senha` é pública; tentativa com um link que nem existe
+  não é registrada (ator e entidade seriam nulos e um script anônimo encheria a trilha).
+  Link existente mas usado/expirado continua registrado como erro, com o dono do link.
+  O dono do link é consultado uma vez só por chamada (`PontoDeJuncao.lembrar`).
+
 ### Weaving (tecelagem)
 
 O momento em que o advice é "costurado" ao ponto de junção. Python não tem um compilador
@@ -190,7 +202,7 @@ a mensagem de negócio), `duracao_ms` e `detalhes`.
 | --- | --- | --- |
 | `unisos.eventos` | exchange **topic**, durável | Recebe todos os eventos |
 | `unisos.auditoria` | fila durável, binding `#` | Grava todo evento na tabela `auditoria` |
-| `unisos.metricas` | fila durável, binding `ocorrencia.*` | Conta ocorrências por tipo e registra indicadores no log |
+| `unisos.metricas` | fila durável, binding `ocorrencia.*` | Conta ocorrências por tipo e registra indicadores no log (por processo, ver abaixo) |
 | `unisos.eventos.dlx` | exchange fanout, durável | *Dead-letter exchange* das duas filas |
 | `unisos.eventos.mortos` | fila durável | Mensagens rejeitadas, para análise |
 | `notificacoes` | exchange fanout (já existia) | Aviso dos WebSockets entre instâncias; não mudou |
@@ -208,7 +220,7 @@ POST /ocorrencias
           2. advice de @publicar_evento monta Evento(tipo="ocorrencia.criada")
           3. aspectos.entregar(evento)
                ├─ eventos.publicar(evento): agenda no event loop e ESPERA o "ack" do broker
-               │     (publisher confirms, mensagem persistente, até 3 s)
+               │     (publisher confirms, mensagem persistente, até 1,5 s)
                └─ sem broker / sem confirmação → gravar_evento(evento, "direto") no banco
           4. advice de @auditar faz o mesmo com "auditoria.ocorrencia.criar"
   RabbitMQ: unisos.eventos ──"#"──────────► unisos.auditoria ─► consumir_auditoria (um dos workers)
@@ -224,10 +236,23 @@ Garantias:
   direto no banco, numa sessão própria (`origem = "direto"`). A operação nunca para.
 - **Ack manual e prefetch**: cada consumidor recebe no máximo 10 mensagens sem ack
   (`PREFETCH`); o ack só sai depois do INSERT.
+- **Broker degradado**: se uma confirmação não chega (TCP vivo, broker lento), o broker fica
+  marcado como degradado por 30 s (`PAUSA_BROKER_DEGRADADO_SEGUNDOS`) e as publicações desse
+  intervalo vão direto ao fallback, sem cada requisição esperar o timeout de novo.
 - **Mensagem com erro não trava a fila**: JSON inválido vai direto para
-  `unisos.eventos.mortos` (`reject(requeue=False)`). Falha ao gravar (ex.: banco fora do ar)
-  ganha uma nova tentativa (`nack(requeue=True)`); se falhar de novo (mensagem já
-  `redelivered`), vai para a fila de mortos.
+  `unisos.eventos.mortos` (`reject(requeue=False)`). Falha ao gravar (ex.: queda curta do
+  Neon) ganha novas tentativas no próprio consumidor, com espera crescente (1, 3, 10 e 30 s,
+  `ESPERAS_NOVA_TENTATIVA_SEGUNDOS`); só se todas falharem a mensagem vai para a fila de mortos.
+- **Reprocessamento da fila de mortos**: cada instância roda `reprocessar_mortos` 30 s depois
+  de subir e a cada 10 min. Todo evento da fila de mortos também passou pela fila de auditoria
+  (binding `#`), então ele é regravado na trilha (idempotente). Se o banco ainda falhar, a
+  mensagem volta para o fim da fila (cabeçalho `x-unisos-reprocessamentos`) e a rodada para.
+  Para rodar na hora: `cd backend; python -m scripts.reprocessar_eventos_mortos`
+  (com `RABBITMQ_URL` e `DATABASE_URL` do ambiente).
+- **Indicadores por processo**: a fila `unisos.metricas` é compartilhada, então com vários
+  workers cada processo conta só a parte que recebeu, desde a sua subida (o log diz
+  "Indicadores do processo <pid> (parciais ...)"). O total do sistema é a tabela `auditoria`
+  (`GET /auditoria?tipo=ocorrencia.criada`).
 - **Idempotência**: o id do evento é a chave primária da tabela `auditoria`. Reentrega,
   publicação duplicada ou dois workers recebendo o mesmo evento geram um único registro.
 - **Vários workers/instâncias**: todos consomem da mesma fila durável; o RabbitMQ entrega

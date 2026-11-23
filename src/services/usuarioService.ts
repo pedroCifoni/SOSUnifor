@@ -32,7 +32,7 @@ export const usuarioService = {
     return http.delete<void>(`/usuarios/${id}`)
   },
 
-  salvarLote(dados: LoteUsuarios): Promise<{ criadas: number; atualizadas: number; excluidas: number }> {
+  salvarLote(dados: LoteUsuarios): Promise<{ criadas: number; atualizadas: number; excluidas: number; idsCriados: string[] }> {
     return http.post('/usuarios/lote', dados)
   },
 }
