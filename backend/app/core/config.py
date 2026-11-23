@@ -20,16 +20,11 @@ class Configuracoes(BaseSettings):
     db_pool_recycle: int = 300
     # Desligue (false) se o pooler em modo transação reclamar de prepared statements.
     db_prepared_statements: bool = True
-
-    # Avisos em tempo real entre várias instâncias da API (Postgres LISTEN/NOTIFY).
-    # Com true, cada instância escuta o canal do banco usando DATABASE_URL_DIRETA:
-    # no Neon, é o endpoint SEM "-pooler" (LISTEN não funciona através do pooler).
-    tempo_real_distribuido: bool = False
-    database_url_direta: str = ""
     jwt_secret: str = "chave-exclusiva-para-desenvolvimento-local-nao-publicar"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+    rabbitmq_url: str = "amqp://unisos:uni12345@localhost:5672/"
 
     # Endereço público do front-end, usado para montar os links enviados por e-mail.
     frontend_url: str = "http://localhost:5173"

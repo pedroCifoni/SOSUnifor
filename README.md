@@ -81,7 +81,7 @@ A API cria as tabelas, os índices e os usuários iniciais sozinha na primeira v
 │   │   └── carga/                    # Teste de carga com Locust (locustfile.py e popular_banco.py)
 │   ├── requirements.txt              # Dependências Python da API
 │   └── .env.example                  # Modelo de variáveis de ambiente da API
-├── docker-compose.yml                # PostgreSQL e Mailpit para desenvolvimento local
+├── docker-compose.yml                # PostgreSQL, Mailpit e RabbitMQ para desenvolvimento local
 ├── vercel.json                       # Rewrite da SPA na Vercel
 └── docs/                             # Documentação e diagramas do projeto
 ```
@@ -219,8 +219,7 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 | `DB_POOL_TIMEOUT` | Segundos aguardando uma conexão livre do pool antes de responder erro. Padrão: `10`. |
 | `DB_POOL_RECYCLE` | Segundos até reciclar uma conexão (importante no Neon, que encerra conexões ociosas). Padrão: `300`. |
 | `DB_PREPARED_STATEMENTS` | Padrão: `true`. Defina como `false` se o pooler em modo transação (PgBouncer/Neon `-pooler`) reclamar de prepared statements. |
-| `TEMPO_REAL_DISTRIBUIDO` | Padrão: `false`. Com `true`, distribui notificações WebSocket entre várias instâncias/workers via Postgres `LISTEN`/`NOTIFY`. |
-| `DATABASE_URL_DIRETA` | URL do mesmo banco **sem** `-pooler`, usada apenas pelo ouvinte de tempo real quando `TEMPO_REAL_DISTRIBUIDO=true` (se vazio, usa `DATABASE_URL`). |
+| `RABBITMQ_URL` | Broker que distribui os avisos em tempo real entre as instâncias da API. Em dev: o RabbitMQ do docker-compose (`amqp://unisos:uni12345@localhost:5672/`); em produção: URL `amqps://` do CloudAMQP. Sem broker, cada processo avisa só as suas conexões. |
 
 **E-mail (SMTP)**
 
@@ -240,14 +239,25 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 |---|---|
 | **Vercel** | Front-end (Vite) na raiz do repositório · `VITE_API_URL` apontando para a API no Render |
 | **Render** | Web Service · Root Directory `backend` · Build `pip install -r requirements.txt` · Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT` · `PYTHON_VERSION=3.12.7` |
-| **Neon** | PostgreSQL serverless · `DATABASE_URL` usando o host **com** `-pooler` (com prefixo `postgresql+psycopg://`) |
+| **Neon** | PostgreSQL serverless · `DATABASE_URL` com o prefixo `postgresql+psycopg://` (veja abaixo qual endpoint usar) |
 
 Um push na `main` atualiza o front e a API.
 
-### Detalhes do Neon e tempo real distribuído
+### Neon
 
-- Em produção no Neon, `DATABASE_URL` deve apontar para o endpoint **com** `-pooler` (ex.: `ep-xxx-pooler.sa-east-1.aws.neon.tech`), usado pelas requisições normais da API.
-- Se `TEMPO_REAL_DISTRIBUIDO=true` (necessário apenas quando há mais de uma instância/worker da API), configure também `DATABASE_URL_DIRETA` apontando para o mesmo banco pelo endpoint **sem** `-pooler` (ex.: `ep-xxx.sa-east-1.aws.neon.tech`), pois `LISTEN`/`NOTIFY` do PostgreSQL não funciona através do pooler. Vale notar que manter esse ouvinte ligado conserva uma conexão aberta por instância e impede o Neon de suspender o banco (*scale to zero*) enquanto a API estiver ativa.
+- Hoje a produção usa a connection string **sem** connection pooling (conexão direta), com o prefixo trocado para `postgresql+psycopg://`.
+- Ao escalar para várias instâncias/workers, cada processo abre até `DB_POOL_SIZE + DB_MAX_OVERFLOW` conexões. Se isso se aproximar do limite de conexões do Neon, troque `DATABASE_URL` pelo endpoint **com** `-pooler` (ex.: `ep-xxx-pooler.sa-east-1.aws.neon.tech`); se aparecerem erros de *prepared statement*, defina `DB_PREPARED_STATEMENTS=false`.
+
+### Tempo real entre instâncias (RabbitMQ)
+
+(O sistema pode funcionar mesmo sem o broker, com as notificações chegando pelo polling de 60 s.)
+
+1. Crie uma instância no [CloudAMQP](https://www.cloudamqp.com/) (plano free).
+2. Copie a URL `amqps://...`.
+3. No Render, adicione a variável `RABBITMQ_URL` com essa URL.
+4. Faça o redeploy.
+
+Se o log da API mostrar `RabbitMQ conectado`, está funcionando.
 
 ### Variáveis obrigatórias em produção
 

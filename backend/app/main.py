@@ -1,3 +1,4 @@
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
@@ -5,11 +6,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.controllers import routers
+from app.core import mensageria
 from app.core.config import configuracoes, obter_origens_cors, validar_configuracao_de_producao
 from app.core.excecoes import ErroAplicacao
 from app.core.inicializacao_banco import inicializar_banco
-from app.core.tempo_real import gerenciador_notificacoes
-from app.core.tempo_real_distribuido import OuvinteNotificacoes
 
 
 def regex_origem_de_rede_em_desenvolvimento() -> str | None:
@@ -19,18 +19,18 @@ def regex_origem_de_rede_em_desenvolvimento() -> str | None:
     return r"^http://(?:localhost|127\.0\.0\.1|10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}):\d+$"
 
 
+logging.basicConfig(level=logging.INFO)
+
+
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
     validar_configuracao_de_producao()
     inicializar_banco()
-    ouvinte = OuvinteNotificacoes(gerenciador_notificacoes) if configuracoes.tempo_real_distribuido else None
-    if ouvinte is not None:
-        await ouvinte.iniciar()
+    await mensageria.iniciar()
     try:
         yield
     finally:
-        if ouvinte is not None:
-            await ouvinte.parar()
+        await mensageria.encerrar()
 
 
 app = FastAPI(title="UniSOS API", version="1.0.0", lifespan=ciclo_de_vida)

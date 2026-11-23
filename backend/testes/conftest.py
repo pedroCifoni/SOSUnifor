@@ -8,7 +8,9 @@ import os
 
 os.environ["DATABASE_URL"] = "postgresql+psycopg://unisos:uni12345@localhost:5433/unisos_testes"
 os.environ["SMTP_HOST"] = ""
-os.environ["TEMPO_REAL_DISTRIBUIDO"] = "false"
+# Porta fechada de propósito: os testes não publicam no RabbitMQ de desenvolvimento
+# (a mensageria cai no modo local, só deste processo).
+os.environ["RABBITMQ_URL"] = "amqp://guest:guest@127.0.0.1:1/"
 os.environ["AMBIENTE"] = "teste"
 
 from collections.abc import Callable

@@ -7,10 +7,8 @@ from fastapi import BackgroundTasks, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core.config import configuracoes
+from app.core import mensageria
 from app.core.database import obter_banco
-from app.core.tempo_real import gerenciador_notificacoes
-from app.core.tempo_real_distribuido import publicar_aviso
 from app.entities.usuario import Usuario
 from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
@@ -27,17 +25,10 @@ _esquema_bearer = HTTPBearer(auto_error=False)
 
 # ---------- services ----------
 def _avisador(tarefas: BackgroundTasks):
-    """Agenda o aviso por WebSocket para depois que a resposta for enviada.
-
-    Com TEMPO_REAL_DISTRIBUIDO, o aviso vai só para o canal do banco: o ouvinte de cada
-    processo (inclusive este) entrega às suas conexões, sem aviso duplicado.
-    """
+    """Agenda o aviso para depois que a resposta for enviada (RabbitMQ; sem ele, só este processo)."""
 
     def avisar(destinatarios: list[UUID]) -> None:
-        if configuracoes.tempo_real_distribuido:
-            tarefas.add_task(publicar_aviso, destinatarios)
-        else:
-            tarefas.add_task(gerenciador_notificacoes.avisar, destinatarios)
+        tarefas.add_task(mensageria.publicar, destinatarios)
 
     return avisar
 

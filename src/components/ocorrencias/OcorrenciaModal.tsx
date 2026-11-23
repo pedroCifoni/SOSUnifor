@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react'
 import { BellRing, FileText, MapPin, Navigation, ShieldAlert, Wrench, X, type LucideIcon } from 'lucide-react'
 import { Timeline } from '@/components/ocorrencias/Timeline'
 import { StatusBadge } from '@/components/ui/StatusBadge'
+import { ImagemAmpliavel } from '@/components/ui/ImagemAmpliavel'
 import { TIPO_LABEL, type Ocorrencia, type TipoOcorrencia } from '@/models/ocorrencia'
 import type { Usuario } from '@/models/usuario'
 import { dataHora } from '@/utils/format'
@@ -57,9 +58,9 @@ function AnexoProtegido({ anexo }: { anexo: NonNullable<Ocorrencia['anexos']>[nu
   }, [anexo.url])
 
   if (anexo.tipo?.startsWith('image/') && urlTemporaria) {
-    return <img src={urlTemporaria} alt={anexo.nome} className="h-36 w-full object-cover" />
+    return <ImagemAmpliavel src={urlTemporaria} alt={anexo.nome} className="h-48" />
   }
-  return <div className="grid h-36 place-items-center gap-1 px-3 text-center text-xs text-muted"><FileText size={24} className="mx-auto" />{anexo.nome}</div>
+  return <div className="grid h-48 place-items-center gap-1 px-3 text-center text-xs text-muted"><FileText size={24} className="mx-auto" />{anexo.nome}</div>
 }
 
 export function OcorrenciaModal({ ocorrencia: o, onClose, acao, destinos }: OcorrenciaModalProps) {
@@ -152,7 +153,7 @@ export function OcorrenciaModal({ ocorrencia: o, onClose, acao, destinos }: Ocor
               <ul className="grid grid-cols-2 gap-3">
                 {o.anexos.map((a, i) => (
                   <li key={`${a.nome}-${i}`} className="overflow-hidden rounded-xl border border-line">
-                    {a.url ? <AnexoProtegido anexo={a} /> : <div className="grid h-36 place-items-center px-3 text-center text-xs text-muted">{a.nome} (pré-visualização indisponível)</div>}
+                    {a.url ? <AnexoProtegido anexo={a} /> : <div className="grid h-48 place-items-center px-3 text-center text-xs text-muted">{a.nome} (pré-visualização indisponível)</div>}
                   </li>
                 ))}
               </ul>
