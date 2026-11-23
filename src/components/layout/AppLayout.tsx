@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, History, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, ShieldCheck, Wrench, X } from 'lucide-react'
+import { ArrowLeft, ClipboardList, FileDown, History, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, ShieldCheck, Wrench, X } from 'lucide-react'
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { AvisoTermos } from '@/components/privacidade/AvisoTermos'
 import { useAuth } from '@/hooks/useAuth'
@@ -16,6 +16,7 @@ const TITULOS: Record<string, string> = {
   '/admin/usuarios': 'Usuários',
   '/admin/areas-campus': 'Áreas do Campus',
   '/admin/auditoria': 'Auditoria',
+  '/admin/relatorios': 'Relatórios',
 }
 
 export function AppLayout() {
@@ -43,6 +44,7 @@ export function AppLayout() {
           { to: '/admin/usuarios', label: 'Usuários', icon: Users },
           { to: '/admin/areas-campus', label: 'Áreas do Campus', icon: MapPinned },
           { to: '/admin/auditoria', label: 'Auditoria', icon: History },
+          { to: '/admin/relatorios', label: 'Relatórios', icon: FileDown },
         ]
       : []),
     { to: '/privacidade', label: 'Privacidade e seus dados', icon: ShieldCheck },

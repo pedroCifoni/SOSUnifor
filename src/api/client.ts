@@ -64,9 +64,17 @@ export const http = {
     return resposta.json()
   },
   async baixarArquivo(url: string): Promise<Blob> {
+    return (await this.baixarArquivoComNome(url)).arquivo
+  },
+  async baixarArquivoComNome(url: string): Promise<{ arquivo: Blob; nome: string | null }> {
     const token = tokenStorage.get()
     const resposta = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
-    if (!resposta.ok) throw new Error(`Erro ${resposta.status}`)
-    return resposta.blob()
+    if (!resposta.ok) {
+      const erro = await resposta.json().catch(() => null)
+      throw new Error(erro?.detail ?? `Erro ${resposta.status}`)
+    }
+    const cabecalho = resposta.headers.get('Content-Disposition')
+    const nome = cabecalho?.match(/filename="?([^";]+)"?/i)?.[1] ?? null
+    return { arquivo: await resposta.blob(), nome }
   },
 }

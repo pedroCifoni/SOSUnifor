@@ -3,6 +3,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
 import { AuditoriaPage } from '@/pages/Admin/AuditoriaPage'
 import { PainelAdminPage } from '@/pages/Admin/PainelAdminPage'
+import { RelatoriosPage } from '@/pages/Admin/RelatoriosPage'
 import { UsuariosPage } from '@/pages/Admin/UsuariosPage'
 import { HomePage } from '@/pages/Home/HomePage'
 import { EsqueciSenhaPage } from '@/pages/Login/EsqueciSenhaPage'
@@ -55,6 +56,7 @@ export function AppRoutes() {
 
           <Route element={<ProtectedRoute perfis={['admin']} />}>
             <Route path="admin" element={<PainelAdminPage />} />
+            <Route path="admin/relatorios" element={<RelatoriosPage />} />
             <Route path="admin/usuarios" element={<UsuariosPage />} />
             <Route path="admin/auditoria" element={<AuditoriaPage />} />
             <Route path="admin/areas-campus" element={<Suspense fallback={<p className="text-sm text-muted">Carregando mapa…</p>}><AreasCampusPage /></Suspense>} />
