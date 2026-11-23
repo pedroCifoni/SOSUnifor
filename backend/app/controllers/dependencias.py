@@ -7,8 +7,8 @@ from fastapi import BackgroundTasks, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core import mensageria
 from app.core.database import obter_banco
-from app.core.tempo_real import gerenciador_notificacoes
 from app.entities.usuario import Usuario
 from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
@@ -24,10 +24,10 @@ _esquema_bearer = HTTPBearer(auto_error=False)
 
 # ---------- services ----------
 def _avisador(tarefas: BackgroundTasks):
-    """Agenda o aviso por WebSocket para depois que a resposta for enviada."""
+    """Agenda o aviso para depois que a resposta for enviada."""
 
     def avisar(destinatarios: list[UUID]) -> None:
-        tarefas.add_task(gerenciador_notificacoes.avisar, destinatarios)
+        tarefas.add_task(mensageria.publicar, destinatarios)
 
     return avisar
 
