@@ -1,9 +1,11 @@
 import hashlib
 import secrets
 from datetime import datetime, timedelta, timezone
+from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.aspectos import auditar
 from app.core.config import configuracoes
 from app.core.excecoes import AcessoNegadoErro, NaoAutenticadoErro, RegraDeNegocioErro
 from app.core.seguranca import conferir_senha, criar_token, gerar_hash_senha, ler_id_do_token
@@ -76,6 +78,12 @@ class AuthService:
         self.emails.enviar_redefinicao_senha(usuario.nome, usuario.email, token)
         return resposta
 
+    @auditar(
+        "auth.redefinir_senha",
+        entidade="usuario",
+        entidade_id=lambda ponto, _: ponto.instancia.dono_do_link(ponto.resolver("dados.token")),
+        ator=lambda ponto, _: ponto.instancia.dono_do_link(ponto.resolver("dados.token")),
+    )
     def redefinir_senha(self, dados: RedefinirSenhaEntrada) -> MensagemResposta:
         agora = datetime.now(timezone.utc)
         registro = self.tokens_redefinicao.buscar_por_hash_para_uso(_hash_do_token(dados.token))
@@ -90,6 +98,10 @@ class AuthService:
         self.sessao.commit()
         self.emails.enviar_aviso_senha_alterada(usuario.nome, usuario.email)
         return MensagemResposta(mensagem="Senha alterada. Você já pode entrar com a nova senha.")
+
+    def dono_do_link(self, token: str | None) -> UUID | None:
+        """Id da conta dona de um link de redefinição (usado ou não); None se o link não existe."""
+        return self.tokens_redefinicao.buscar_usuario_id_por_hash(_hash_do_token(token)) if token else None
 
     def usuario_do_token(self, token: str | None) -> Usuario:
         """Identifica o usuário do token e registra o último acesso (usado para saber quem está online)."""

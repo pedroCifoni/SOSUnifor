@@ -59,6 +59,8 @@ INDICES_DE_CONSULTA = [
     "CREATE INDEX IF NOT EXISTS ix_notificacoes_destinatario_nao_lidas ON notificacoes (destinatario_id) WHERE lida = false",
     # Busca de contas ativas por perfil (admins avisados a cada nova ocorrência, equipes etc.).
     "CREATE INDEX IF NOT EXISTS ix_credentials_tipo_usuario_ativo ON credentials (tipo_usuario, ativo)",
+    # Trilha de auditoria (GET /auditoria): ordem e cursor (ocorrido_em, id).
+    "CREATE INDEX IF NOT EXISTS ix_auditoria_ocorrido_em_id ON auditoria (ocorrido_em DESC, id DESC)",
 ]
 
 def criar_indices_de_consulta() -> None:

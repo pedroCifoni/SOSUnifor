@@ -28,7 +28,7 @@ from app.core.database import engine
 from app.main import app
 
 
-TABELAS_DE_TESTE = "notificacoes, eventos_ocorrencia, tokens_redefinicao_senha, ocorrencias, areas_campus, credentials"
+TABELAS_DE_TESTE = "auditoria, notificacoes,eventos_ocorrencia, tokens_redefinicao_senha, ocorrencias, areas_campus, credentials"
 
 
 @pytest.fixture

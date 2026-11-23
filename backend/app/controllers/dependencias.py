@@ -7,11 +7,12 @@ from fastapi import BackgroundTasks, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core import mensageria
+from app.core import contexto_requisicao, mensageria
 from app.core.database import obter_banco
 from app.entities.usuario import Usuario
 from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
+from app.services.auditoria_service import AuditoriaService
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
@@ -66,12 +67,19 @@ def arquivo_service(banco: Banco) -> ArquivoService:
     return ArquivoService(banco)
 
 
+def auditoria_service(banco: Banco) -> AuditoriaService:
+    return AuditoriaService(banco)
+
+
 # ---------- autenticação ----------
 def usuario_atual(
     credenciais: Annotated[HTTPAuthorizationCredentials | None, Depends(_esquema_bearer)],
     servico: Annotated[AuthService, Depends(auth_service)],
 ) -> Usuario:
-    return servico.usuario_do_token(credenciais.credentials if credenciais else None)
+    usuario = servico.usuario_do_token(credenciais.credentials if credenciais else None)
+    # Anota no contexto da requisição quem está agindo: os aspectos de auditoria leem daqui.
+    contexto_requisicao.definir_ator(usuario.id)
+    return usuario
 
 
 def exigir_perfil(*perfis: str):

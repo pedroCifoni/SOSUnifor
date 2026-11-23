@@ -2,6 +2,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.aspectos import auditar, campos, nomes_dos_campos_enviados
 from app.core.excecoes import ConflitoErro, NaoEncontradoErro, RegraDeNegocioErro
 from app.core.seguranca import gerar_hash_senha
 from app.dtos.usuario_dto import (
@@ -44,6 +45,8 @@ class UsuarioService:
         ]
 
     # ---------- comandos ----------
+    # Sem "ator": quem cria é o administrador autenticado na requisição (contexto do aspecto HTTP).
+    @auditar("usuario.criar", entidade="usuario", entidade_id="resultado.id", detalhes=campos(perfil="dados.perfil"))
     def criar(self, dados: UsuarioEntrada) -> UsuarioResposta:
         usuario = self._novo_usuario(dados)
         self.sessao.commit()
@@ -51,6 +54,13 @@ class UsuarioService:
         self._enviar_acesso(usuario, dados.senha)
         return UsuarioResposta.de_entidade(usuario)
 
+    @auditar(
+        "usuario.editar",
+        entidade="usuario",
+        entidade_id="usuario_id",
+        ator="administrador.id",
+        detalhes=nomes_dos_campos_enviados("dados"),
+    )
     def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioResposta:
         usuario = self._buscar_ativo(usuario_id)
         novos_dados = dados.model_dump(exclude_unset=True)
@@ -61,10 +71,21 @@ class UsuarioService:
         self.sessao.refresh(usuario)
         return UsuarioResposta.de_entidade(usuario)
 
+    @auditar("usuario.excluir", entidade="usuario", entidade_id="usuario_id", ator="administrador.id")
     def excluir(self, usuario_id: UUID, administrador: Usuario) -> None:
         self._desativar(self._buscar_ativo(usuario_id), administrador)
         self.sessao.commit()
 
+    @auditar(
+        "usuario.salvar_em_lote",
+        entidade="usuario",
+        ator="administrador.id",
+        detalhes=lambda ponto, _: {
+            "criacoes": len(ponto.resolver("dados.criacoes") or []),
+            "atualizacoes": len(ponto.resolver("dados.atualizacoes") or []),
+            "exclusoes": len(ponto.resolver("dados.exclusoes") or []),
+        },
+    )
     def salvar_em_lote(self, dados: UsuarioLoteEntrada, administrador: Usuario) -> UsuarioLoteResposta:
         """Aplica o rascunho do painel administrativo em uma única transação: tudo ou nada."""
         # O banco só enxerga as contas novas depois do flush; por isso e-mails repetidos dentro

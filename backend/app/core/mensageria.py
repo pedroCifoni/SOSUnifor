@@ -34,6 +34,11 @@ async def iniciar() -> None:
         _conexao, _exchange = None, None
 
 
+def conexao() -> aio_pika.abc.AbstractRobustConnection | None:
+    """A conexão com o broker (None sem RabbitMQ). Reaproveitada pelos eventos de domínio (app/core/eventos.py)."""
+    return _conexao
+
+
 async def encerrar() -> None:
     if _conexao is not None:
         await _conexao.close()

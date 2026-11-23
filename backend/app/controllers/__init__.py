@@ -3,6 +3,7 @@
 from app.controllers import (
     area_campus_controller,
     arquivo_controller,
+    auditoria_controller,
     auth_controller,
     notificacao_controller,
     ocorrencia_controller,
@@ -18,6 +19,7 @@ routers = [
     ocorrencia_controller.router,
     notificacao_controller.router,
     arquivo_controller.router,
+    auditoria_controller.router,
     tempo_real_controller.router,
     saude_controller.router,
 ]

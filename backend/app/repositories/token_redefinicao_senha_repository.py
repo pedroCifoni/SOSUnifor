@@ -16,6 +16,9 @@ class TokenRedefinicaoSenhaRepository:
         consulta = select(TokenRedefinicaoSenha).where(TokenRedefinicaoSenha.token_hash == token_hash).with_for_update()
         return self.sessao.scalar(consulta)
 
+    def buscar_usuario_id_por_hash(self, token_hash: str) -> UUID | None:
+        return self.sessao.scalar(select(TokenRedefinicaoSenha.usuario_id).where(TokenRedefinicaoSenha.token_hash == token_hash))
+
     def contar_pedidos_desde(self, usuario_id: UUID, desde: datetime) -> int:
         consulta = (
             select(func.count())
