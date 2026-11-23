@@ -1,12 +1,18 @@
 """Teste HTTP isolado da distribuição de SOS e do encaminhamento para a segurança.
 
-Inicie a API usando um banco temporário na porta 8002 antes de executar este arquivo.
+Inicie a API usando um banco temporário na porta 8002 antes de executar este arquivo, e rode-o
+com o mesmo DATABASE_URL da API: a conta criada aqui nasce com o e-mail não confirmado, e o script
+a confirma direto nesse banco (o link de confirmação só existiria no e-mail).
 """
 
 import json
 import sys
+from datetime import datetime, timezone
+from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # permite `import app` rodando da pasta backend
 
 
 BASE_URL = "http://127.0.0.1:8002"
@@ -31,6 +37,21 @@ def requisitar(caminho: str, metodo: str = "GET", dados: dict | None = None, tok
 def entrar(email: str) -> str:
     resposta = requisitar("/auth/login", "POST", {"email": email, "senha": SENHA_TESTE})
     return resposta["token"]
+
+
+def confirmar_email_no_banco(email: str) -> None:
+    """Faz o papel do clique no link de confirmação, que só chegaria por e-mail."""
+    from sqlalchemy import update
+
+    from app.core.database import FabricaSessao
+    from app.entities.usuario import Usuario
+
+    with FabricaSessao() as sessao:
+        resultado = sessao.execute(
+            update(Usuario).where(Usuario.email == email).values(email_verificado_em=datetime.now(timezone.utc))
+        )
+        sessao.commit()
+    assert resultado.rowcount == 1, f"Conta {email} não encontrada no banco: confira se DATABASE_URL é o mesmo da API."
 
 
 def notificacoes_da_ocorrencia(token: str, ocorrencia_id: str, tipo: str) -> list[dict]:
@@ -58,6 +79,7 @@ def testar_distribuicao() -> None:
         },
         token_admin,
     )
+    confirmar_email_no_banco("conectada.teste@unifor.br")
     token_usuario_conectado = entrar("conectada.teste@unifor.br")
 
     # A consulta autenticada marca as duas abas de usuário como ativas.

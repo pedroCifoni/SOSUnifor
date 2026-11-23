@@ -2,7 +2,7 @@ import re
 from datetime import datetime, timedelta, timezone
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 
 from app.core.database import FabricaSessao, engine
 from app.core.inicializacao_banco import adicionar_verificacao_de_email
@@ -223,3 +223,141 @@ def test_contas_existentes_continuam_entrando_apos_a_migracao(client: TestClient
     adicionar_verificacao_de_email()
     with FabricaSessao() as sessao:
         assert sessao.scalar(select(Usuario.email_verificado_em).where(Usuario.email == "depois@unifor.br")) is None
+
+
+def _id_por_email(client: TestClient, token_admin: str, email: str) -> str:
+    lista = client.get("/usuarios", headers=_cabecalho(token_admin)).json()
+    return next(u["id"] for u in lista if u["email"] == email)
+
+
+def test_admin_so_troca_o_proprio_email_se_houver_outro_admin_confirmado(
+    client: TestClient, token_admin: str, criar_usuario, emails
+) -> None:
+    meu_id = _id_por_email(client, token_admin, "admin@unifor.br")
+    # Um admin ainda não confirmado não resolve: ele também não conseguiria entrar.
+    criar_usuario("outro.admin@unifor.br", perfil="admin", email_verificado=False)
+
+    for envio in (
+        lambda: client.put(f"/usuarios/{meu_id}", headers=_cabecalho(token_admin), json={"email": "admim@unifor.br"}),
+        lambda: client.post(
+            "/usuarios/lote",
+            headers=_cabecalho(token_admin),
+            json={"atualizacoes": [{"id": meu_id, "email": "admim@unifor.br"}]},
+        ),
+    ):
+        recusado = envio()
+        assert recusado.status_code == 400, recusado.text
+        assert "outro administrador" in recusado.json()["detail"]
+    assert emails == []
+    assert _login(client, "admin@unifor.br", "123456").status_code == 200
+
+    # Mudar só o nome continua permitido.
+    assert client.put(f"/usuarios/{meu_id}", headers=_cabecalho(token_admin), json={"nome": "Admin"}).status_code == 200
+
+    criar_usuario("reserva@unifor.br", perfil="admin")
+    aceito = client.put(f"/usuarios/{meu_id}", headers=_cabecalho(token_admin), json={"email": "admin.novo@unifor.br"})
+    assert aceito.status_code == 200, aceito.text
+    assert aceito.json()["emailVerificado"] is False
+
+
+def test_sessao_aberta_para_quando_o_email_deixa_de_estar_confirmado(
+    client: TestClient, token_admin: str, criar_usuario
+) -> None:
+    pessoa = criar_usuario("logada@unifor.br", senha="senha123")
+    token = _login(client, "logada@unifor.br", "senha123").json()["token"]
+    assert client.get("/notificacoes", headers=_cabecalho(token)).status_code == 200
+
+    client.put(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json={"email": "trocado@unifor.br"})
+    barrado = client.get("/notificacoes", headers=_cabecalho(token))
+    assert barrado.status_code == 403
+    assert barrado.json()["codigo"] == "email_nao_verificado"
+
+    # O canal de tempo real também recusa a conta.
+    from starlette.websockets import WebSocketDisconnect
+
+    try:
+        with client.websocket_connect(f"/ws/notificacoes?token={token}") as canal:
+            canal.receive_text()
+        raise AssertionError("O canal deveria ter sido fechado.")
+    except WebSocketDisconnect as fechamento:
+        assert fechamento.code == 1008
+
+
+def test_status_de_confirmacao_so_aparece_para_o_admin(client: TestClient, token_admin: str, criar_usuario) -> None:
+    criar_usuario("pendente.tec@unifor.br", perfil="tecnico", email_verificado=False)
+    criar_usuario("aluno@unifor.br", senha="senha123")
+    token_aluno = _login(client, "aluno@unifor.br", "senha123").json()["token"]
+
+    for caminho in ("/usuarios/tecnicos", "/usuarios/segurancas"):
+        lista = client.get(caminho, headers=_cabecalho(token_aluno)).json()
+        assert lista and all("emailVerificado" not in u for u in lista)
+    assert all("emailVerificado" in u for u in client.get("/usuarios", headers=_cabecalho(token_admin)).json())
+
+
+def test_links_nao_guardam_o_endereco_e_somem_com_a_conta(client: TestClient, token_admin: str, emails) -> None:
+    criada = _criar_pelo_admin(client, token_admin, email="privacidade@unifor.br")
+    with engine.connect() as conexao:
+        colunas = {c for c in conexao.execute(text("SELECT * FROM tokens_verificacao_email LIMIT 0")).keys()}
+        linhas = conexao.execute(text("SELECT * FROM tokens_verificacao_email")).all()
+    assert "email" not in colunas
+    assert linhas and all("privacidade@unifor.br" not in str(valor) for linha in linhas for valor in linha)
+
+    # Links vencidos há muito tempo são apagados no próximo envio, de qualquer conta.
+    with FabricaSessao() as sessao:
+        for registro in sessao.scalars(select(TokenVerificacaoEmail)):
+            registro.criado_em = registro.expira_em = datetime.now(timezone.utc) - timedelta(days=30)
+        sessao.commit()
+    _criar_pelo_admin(client, token_admin, email="outra@unifor.br")
+    with FabricaSessao() as sessao:
+        assert sessao.scalar(select(func.count()).select_from(TokenVerificacaoEmail)) == 1
+
+    # Excluir a conta apaga os links dela.
+    outra_id = _id_por_email(client, token_admin, "outra@unifor.br")
+    assert client.delete(f"/usuarios/{outra_id}", headers=_cabecalho(token_admin)).status_code == 204
+    with FabricaSessao() as sessao:
+        assert sessao.scalar(select(func.count()).select_from(TokenVerificacaoEmail)) == 0
+    assert criada["id"] != outra_id
+
+
+def test_reenvios_simultaneos_respeitam_o_limite(client: TestClient, criar_usuario, emails) -> None:
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+
+    from app.dtos.auth_dto import ReenviarVerificacaoEntrada
+    from app.services.verificacao_email_service import LIMITE_ENVIOS_VERIFICACAO, VerificacaoEmailService
+
+    criar_usuario("alvo@unifor.br", email_verificado=False)
+    quantos = 8
+    largada = Barrier(quantos)
+
+    def pedir() -> None:
+        with FabricaSessao() as sessao:
+            largada.wait()
+            VerificacaoEmailService(sessao).reenviar(ReenviarVerificacaoEntrada(email="alvo@unifor.br"))
+
+    with ThreadPoolExecutor(max_workers=quantos) as executor:
+        for futuro in [executor.submit(pedir) for _ in range(quantos)]:
+            futuro.result()
+    assert len(emails) == LIMITE_ENVIOS_VERIFICACAO
+
+
+def test_migracao_tira_o_email_em_claro_dos_links(client: TestClient, token_admin: str, emails) -> None:
+    """Bancos que rodaram a primeira versão da tabela (coluna `email`) passam a `email_hash`."""
+    from app.core.inicializacao_banco import remover_email_em_claro_dos_links_de_confirmacao
+
+    _criar_pelo_admin(client, token_admin)
+    with engine.begin() as conexao:
+        conexao.execute(text("ALTER TABLE tokens_verificacao_email DROP COLUMN email_hash"))
+        conexao.execute(text("ALTER TABLE tokens_verificacao_email ADD COLUMN email VARCHAR(150) NOT NULL DEFAULT 'x@unifor.br'"))
+    engine.dispose()
+    remover_email_em_claro_dos_links_de_confirmacao()
+    remover_email_em_claro_dos_links_de_confirmacao()  # idempotente
+    engine.dispose()
+
+    with engine.connect() as conexao:
+        colunas = set(conexao.execute(text("SELECT * FROM tokens_verificacao_email LIMIT 0")).keys())
+    assert "email" not in colunas and "email_hash" in colunas
+    # O link antigo foi descartado; um novo pedido funciona normalmente.
+    assert client.post("/auth/verificar-email", json={"token": _token_do_email(emails[0])}).status_code == 400
+    client.post("/auth/reenviar-verificacao", json={"email": "nova@unifor.br"})
+    assert client.post("/auth/verificar-email", json={"token": _token_do_email(emails[-1])}).status_code == 200

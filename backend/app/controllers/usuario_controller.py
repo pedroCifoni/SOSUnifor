@@ -7,6 +7,7 @@ from app.controllers.dependencias import Administrador, UsuarioAtual, usuario_se
 from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
     SegurancaNotificadaResposta,
+    UsuarioAdminResposta,
     UsuarioAtualizacao,
     UsuarioEntrada,
     UsuarioLoteEntrada,
@@ -20,8 +21,8 @@ router = APIRouter(tags=["Usuários"])
 Servico = Annotated[UsuarioService, Depends(usuario_service)]
 
 
-@router.get("/usuarios", response_model=list[UsuarioResposta])
-def listar(_: Administrador, servico: Servico) -> list[UsuarioResposta]:
+@router.get("/usuarios", response_model=list[UsuarioAdminResposta])
+def listar(_: Administrador, servico: Servico) -> list[UsuarioAdminResposta]:
     return servico.listar_ativos()
 
 
@@ -35,8 +36,8 @@ def listar_tecnicos(_: UsuarioAtual, servico: Servico) -> list[UsuarioResposta]:
     return servico.listar_por_perfil("tecnico")
 
 
-@router.post("/usuarios", status_code=status.HTTP_201_CREATED, response_model=UsuarioResposta)
-def criar(dados: UsuarioEntrada, _: Administrador, servico: Servico) -> UsuarioResposta:
+@router.post("/usuarios", status_code=status.HTTP_201_CREATED, response_model=UsuarioAdminResposta)
+def criar(dados: UsuarioEntrada, _: Administrador, servico: Servico) -> UsuarioAdminResposta:
     return servico.criar(dados)
 
 
@@ -45,8 +46,8 @@ def salvar_em_lote(dados: UsuarioLoteEntrada, administrador: Administrador, serv
     return servico.salvar_em_lote(dados, administrador)
 
 
-@router.put("/usuarios/{usuario_id}", response_model=UsuarioResposta)
-def atualizar(usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Administrador, servico: Servico) -> UsuarioResposta:
+@router.put("/usuarios/{usuario_id}", response_model=UsuarioAdminResposta)
+def atualizar(usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Administrador, servico: Servico) -> UsuarioAdminResposta:
     return servico.atualizar(usuario_id, dados, administrador)
 
 

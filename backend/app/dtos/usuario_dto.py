@@ -46,14 +46,25 @@ class UsuarioLoteEntrada(BaseModel):
 
 # ---------- saída ----------
 class UsuarioResposta(RespostaDTO):
+    """Dados públicos de uma conta (ex.: listas de seguranças e técnicos, abertas a qualquer usuário logado)."""
+
     id: str
     nome: str
     email: str
     perfil: str
-    email_verificado: bool
 
     @classmethod
     def de_entidade(cls, usuario: Usuario) -> "UsuarioResposta":
+        return cls(id=str(usuario.id), nome=usuario.nome, email=usuario.email, perfil=usuario.tipo_usuario)
+
+
+class UsuarioAdminResposta(UsuarioResposta):
+    """Visão do administrador: inclui dados internos de gestão, como a confirmação do e-mail."""
+
+    email_verificado: bool
+
+    @classmethod
+    def de_entidade(cls, usuario: Usuario) -> "UsuarioAdminResposta":
         return cls(
             id=str(usuario.id),
             nome=usuario.nome,

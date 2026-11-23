@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.entities.token_verificacao_email import TokenVerificacaoEmail
@@ -35,3 +35,10 @@ class TokenVerificacaoEmailRepository:
     def adicionar(self, token: TokenVerificacaoEmail) -> TokenVerificacaoEmail:
         self.sessao.add(token)
         return token
+
+    def apagar_do_usuario(self, usuario_id: UUID) -> None:
+        self.sessao.execute(delete(TokenVerificacaoEmail).where(TokenVerificacaoEmail.usuario_id == usuario_id))
+
+    def apagar_vencidos_antes_de(self, limite: datetime) -> None:
+        """Remove links que venceram antes de `limite` (de qualquer conta): não servem mais para nada."""
+        self.sessao.execute(delete(TokenVerificacaoEmail).where(TokenVerificacaoEmail.expira_em < limite))

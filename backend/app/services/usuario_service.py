@@ -8,6 +8,7 @@ from app.core.seguranca import gerar_hash_senha
 from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
     SegurancaNotificadaResposta,
+    UsuarioAdminResposta,
     UsuarioAtualizacao,
     UsuarioEntrada,
     UsuarioLoteEntrada,
@@ -32,8 +33,8 @@ class UsuarioService:
         self._confirmacoes_pendentes: list[tuple[Usuario, str]] = []
 
     # ---------- consultas ----------
-    def listar_ativos(self) -> list[UsuarioResposta]:
-        return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos()]
+    def listar_ativos(self) -> list[UsuarioAdminResposta]:
+        return [UsuarioAdminResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos()]
 
     def listar_por_perfil(self, perfil: str) -> list[UsuarioResposta]:
         return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos_por_perfil(perfil)]
@@ -52,16 +53,16 @@ class UsuarioService:
         ]
 
     # ---------- comandos ----------
-    def criar(self, dados: UsuarioEntrada) -> UsuarioResposta:
+    def criar(self, dados: UsuarioEntrada) -> UsuarioAdminResposta:
         usuario = self._novo_usuario(dados)
         self.sessao.flush()
         token = self.verificacao.emitir_token(usuario)
         self.sessao.commit()
         self.sessao.refresh(usuario)
         self._enviar_acesso(usuario, dados.senha, token)
-        return UsuarioResposta.de_entidade(usuario)
+        return UsuarioAdminResposta.de_entidade(usuario)
 
-    def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioResposta:
+    def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioAdminResposta:
         usuario = self._buscar_ativo(usuario_id)
         novos_dados = dados.model_dump(exclude_unset=True)
         if not novos_dados:
@@ -70,7 +71,7 @@ class UsuarioService:
         self.sessao.commit()
         self.sessao.refresh(usuario)
         self._enviar_confirmacoes_pendentes()
-        return UsuarioResposta.de_entidade(usuario)
+        return UsuarioAdminResposta.de_entidade(usuario)
 
     def reenviar_verificacao(self, usuario_id: UUID) -> MensagemResposta:
         return self.verificacao.reenviar_pelo_admin(self._buscar_ativo(usuario_id))
@@ -122,11 +123,18 @@ class UsuarioService:
             self.emails.enviar_confirmacao_email(usuario.nome, usuario.email, token)
         self._confirmacoes_pendentes.clear()
 
-    def _trocar_email(self, usuario: Usuario, novo_email: str) -> None:
+    def _trocar_email(self, usuario: Usuario, novo_email: str, administrador: Usuario) -> None:
         """E-mail novo precisa ser confirmado de novo; links antigos (confirmação e senha) deixam de valer."""
         email = self._email_disponivel(novo_email, usuario.id)
         if email == usuario.email:
             return
+        # O admin que troca o próprio e-mail fica sem acesso até confirmá-lo. Se o endereço tiver um erro
+        # de digitação, só outro admin (ativo e confirmado) consegue corrigir; sem ele, a troca é recusada.
+        if usuario.id == administrador.id and self.usuarios.contar_admins_confirmados(exceto=usuario.id) == 0:
+            raise RegraDeNegocioErro(
+                "Para trocar o seu próprio e-mail, é preciso existir outro administrador com e-mail confirmado. "
+                "Peça a ele para fazer a troca ou cadastre um antes."
+            )
         agora = datetime.now(timezone.utc)
         usuario.email = email
         usuario.email_verificado_em = None
@@ -147,7 +155,7 @@ class UsuarioService:
         if usuario.id == administrador.id and "perfil" in novos_dados:
             raise RegraDeNegocioErro("Você não pode alterar o próprio perfil.")
         if novos_dados.get("email"):
-            self._trocar_email(usuario, novos_dados["email"])
+            self._trocar_email(usuario, novos_dados["email"], administrador)
         if "nome" in novos_dados:
             usuario.nome = novos_dados["nome"].strip()
         if "perfil" in novos_dados:
@@ -162,6 +170,8 @@ class UsuarioService:
             raise RegraDeNegocioErro("Você não pode excluir a si mesmo.")
         self._garantir_ao_menos_um_admin(usuario)
         usuario.ativo = False
+        # Links de confirmação de uma conta desativada não servem mais para nada.
+        self.verificacao.tokens.apagar_do_usuario(usuario.id)
 
     def _buscar_ativo(self, usuario_id: UUID) -> Usuario:
         usuario = self.usuarios.buscar_por_id(usuario_id)

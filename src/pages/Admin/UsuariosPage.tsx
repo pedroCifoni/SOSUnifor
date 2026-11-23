@@ -86,6 +86,15 @@ export function UsuariosPage() {
       throw new Error('A senha deve ter ao menos 6 caracteres.')
     }
     if (dados.senha && dados.senha.length < 6) throw new Error('A senha deve ter ao menos 6 caracteres.')
+    // Mesma regra da API: quem troca o próprio e-mail fica sem acesso até confirmá-lo, então precisa
+    // haver outro admin confirmado para corrigir um endereço digitado errado.
+    const emailSalvo = salvos?.find((u) => u.id === editando?.id)?.email
+    if (editando && editando.id === eu?.id && emailSalvo !== undefined && email !== emailSalvo) {
+      const outroAdmin = (salvos ?? []).some((u) => u.id !== eu?.id && u.perfil === 'admin' && u.emailVerificado)
+      if (!outroAdmin) {
+        throw new Error('Para trocar o seu próprio e-mail, é preciso existir outro administrador com e-mail confirmado.')
+      }
+    }
 
     if (editando) {
       alterar(editando.id, { nome, email, perfil: dados.perfil, ...(dados.senha && { senha: dados.senha }) })

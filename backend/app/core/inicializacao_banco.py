@@ -42,6 +42,7 @@ def inicializar_banco() -> None:
 def _executar_etapas() -> None:
     atualizar_credenciais_legadas()
     adicionar_verificacao_de_email()
+    remover_email_em_claro_dos_links_de_confirmacao()
     atualizar_ocorrencias_legadas()
     Base.metadata.create_all(bind=engine)
     criar_indices_de_consulta()
@@ -137,6 +138,23 @@ def adicionar_verificacao_de_email() -> None:
         else:
             conexao.execute(text("ALTER TABLE credentials ADD COLUMN email_verificado_em DATETIME"))
             conexao.execute(text("UPDATE credentials SET email_verificado_em = CURRENT_TIMESTAMP WHERE email_verificado_em IS NULL"))
+
+
+def remover_email_em_claro_dos_links_de_confirmacao() -> None:
+    """Bancos que já tinham `tokens_verificacao_email` com a coluna `email` (texto claro) passam a `email_hash`.
+
+    Os links antigos não têm como ganhar o hash (o token só existe no e-mail), então são apagados:
+    quem ainda precisar confirma pedindo um novo link. Em banco sem a tabela (produção), não faz nada.
+    """
+    inspecao = inspect(engine)
+    if not inspecao.has_table("tokens_verificacao_email"):
+        return
+    if "email" not in {coluna["name"] for coluna in inspecao.get_columns("tokens_verificacao_email")}:
+        return
+    with engine.begin() as conexao:
+        conexao.execute(text("DELETE FROM tokens_verificacao_email"))
+        conexao.execute(text("ALTER TABLE tokens_verificacao_email DROP COLUMN email"))
+        conexao.execute(text("ALTER TABLE tokens_verificacao_email ADD COLUMN email_hash VARCHAR(64) NOT NULL"))
 
 
 def atualizar_credenciais_legadas() -> None:

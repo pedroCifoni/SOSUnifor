@@ -12,7 +12,7 @@ export interface Usuario {
   nome: string
   email: string
   perfil: Perfil
-  /** Vem da API nas listas de usuários; ausente no usuário montado a partir do token. */
+  /** Só na visão do admin (GET /usuarios e respostas do cadastro); ausente nas listas públicas e no token. */
   emailVerificado?: boolean
 }
 

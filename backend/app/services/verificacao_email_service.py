@@ -23,6 +23,8 @@ from app.services.email_service import EmailService
 # Limite de links de confirmação por conta, para ninguém encher a caixa de e-mail de outra pessoa.
 LIMITE_ENVIOS_VERIFICACAO = 3
 JANELA_ENVIOS_VERIFICACAO = timedelta(hours=1)
+# Links vencidos há mais que isto são apagados (bem depois da janela do limite de envios).
+RETENCAO_LINKS_VENCIDOS = timedelta(days=7)
 
 # Mesma resposta exista ou não a conta (e esteja ou não confirmada): a tela não revela quais e-mails existem.
 MENSAGEM_REENVIO_VERIFICACAO = (
@@ -35,6 +37,11 @@ MENSAGEM_EMAIL_CONFIRMADO = "E-mail confirmado. Você já pode entrar no sistema
 
 def hash_do_token(token: str) -> str:
     return hashlib.sha256(token.encode()).hexdigest()
+
+
+def hash_do_endereco(token: str, email: str) -> str:
+    """Prende o link ao endereço sem guardá-lo: só quem tem o token consegue refazer este hash."""
+    return hashlib.sha256(f"{token}:{email}".encode()).hexdigest()
 
 
 class VerificacaoEmailService:
@@ -52,11 +59,12 @@ class VerificacaoEmailService:
         """
         agora = agora or datetime.now(timezone.utc)
         token = secrets.token_urlsafe(32)
+        self.tokens.apagar_vencidos_antes_de(agora - RETENCAO_LINKS_VENCIDOS)
         self.tokens.invalidar_pendentes(usuario.id, agora)
         self.tokens.adicionar(
             TokenVerificacaoEmail(
                 usuario_id=usuario.id,
-                email=usuario.email,
+                email_hash=hash_do_endereco(token, usuario.email),
                 token_hash=hash_do_token(token),
                 criado_em=agora,
                 expira_em=agora + timedelta(hours=configuracoes.verificacao_email_expira_horas),
@@ -65,6 +73,8 @@ class VerificacaoEmailService:
         return token
 
     def limite_atingido(self, usuario: Usuario, agora: datetime) -> bool:
+        """Trava a conta antes de contar: pedidos simultâneos esperam um ao outro e não furam o limite."""
+        self.usuarios.travar(usuario.id)
         enviados = self.tokens.contar_pedidos_desde(usuario.id, agora - JANELA_ENVIOS_VERIFICACAO)
         return enviados >= LIMITE_ENVIOS_VERIFICACAO
 
@@ -98,7 +108,7 @@ class VerificacaoEmailService:
             raise RegraDeNegocioErro(MENSAGEM_LINK_INVALIDO)
         usuario = self.usuarios.buscar_por_id(registro.usuario_id)
         # O link comprova o endereço para o qual foi enviado; se a conta mudou de e-mail, não serve mais.
-        if usuario is None or not usuario.ativo or usuario.email != registro.email:
+        if usuario is None or not usuario.ativo or hash_do_endereco(dados.token, usuario.email) != registro.email_hash:
             raise RegraDeNegocioErro(MENSAGEM_LINK_INVALIDO)
 
         if usuario.email_verificado_em is None:

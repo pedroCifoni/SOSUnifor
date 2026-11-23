@@ -110,6 +110,9 @@ class AuthService:
         usuario = self.usuarios.buscar_por_id(ler_id_do_token(token))
         if usuario is None or not usuario.ativo:
             raise NaoAutenticadoErro("Usuário sem acesso.")
+        # Vale também para sessões já abertas: se o admin trocar o e-mail da conta, o acesso para na hora.
+        if usuario.email_verificado_em is None:
+            raise EmailNaoVerificadoErro(MENSAGEM_EMAIL_NAO_VERIFICADO)
         agora = datetime.now(timezone.utc)
         if usuario.ultimo_acesso is None or agora - usuario.ultimo_acesso >= INTERVALO_REGISTRO_ACESSO:
             usuario.ultimo_acesso = agora
