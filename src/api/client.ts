@@ -1,6 +1,19 @@
 import { API_URL } from './config'
 import { tokenStorage } from './tokenStorage'
 
+/** Erro devolvido pela API. `codigo` identifica casos que a tela trata de um jeito próprio. */
+export class ErroApi extends Error {
+  readonly status: number
+  readonly codigo?: string
+
+  constructor(mensagem: string, status: number, codigo?: string) {
+    super(mensagem)
+    this.name = 'ErroApi'
+    this.status = status
+    this.codigo = codigo
+  }
+}
+
 let aoNaoAutorizado: (() => void) | null = null
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
@@ -18,11 +31,13 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
 
-  if (res.status === 401 && token) aoNaoAutorizado?.()
-
   if (!res.ok) {
     const erro = await res.json().catch(() => null)
-    throw new Error(erro?.detail ?? erro?.message ?? `Erro ${res.status}`)
+    const codigo = typeof erro?.codigo === 'string' ? erro.codigo : undefined
+    // Sessão aberta de uma conta cujo e-mail deixou de estar confirmado (ex.: o admin trocou o e-mail):
+    // encerra como uma sessão expirada; no próximo login a tela explica o que fazer.
+    if (token && (res.status === 401 || codigo === 'email_nao_verificado')) aoNaoAutorizado?.()
+    throw new ErroApi(erro?.detail ?? erro?.message ?? `Erro ${res.status}`, res.status, codigo)
   }
   return (res.status === 204 ? undefined : await res.json()) as T
 }

@@ -4,12 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, status
 
 from app.controllers.dependencias import Administrador, UsuarioAtual, usuario_service
+from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
     LIMITE_MAXIMO_USUARIOS,
     LIMITE_PADRAO_USUARIOS,
     Perfil,
     ResumoUsuariosResposta,
     SegurancaNotificadaResposta,
+    UsuarioAdminResposta,
     UsuarioAtualizacao,
     UsuarioEntrada,
     UsuarioLoteEntrada,
@@ -24,7 +26,7 @@ router = APIRouter(tags=["Usuários"])
 Servico = Annotated[UsuarioService, Depends(usuario_service)]
 
 
-@router.get("/usuarios", response_model=list[UsuarioResposta])
+@router.get("/usuarios", response_model=list[UsuarioAdminResposta])
 def listar(
     _: Administrador,
     servico: Servico,
@@ -32,7 +34,7 @@ def listar(
     perfil: Perfil | None = None,
     limite: Annotated[int, Query(description=f"1 a {LIMITE_MAXIMO_USUARIOS}; fora disso é ajustado")] = LIMITE_PADRAO_USUARIOS,
     pagina: Annotated[int, Query(ge=1, description="Página da listagem (a partir de 1)")] = 1,
-) -> list[UsuarioResposta]:
+) -> list[UsuarioAdminResposta]:
     return servico.listar_ativos(
         busca=busca,
         perfil=perfil,
@@ -62,8 +64,8 @@ def listar_tecnicos(_: UsuarioAtual, servico: Servico) -> list[UsuarioResposta]:
     return servico.listar_por_perfil("tecnico")
 
 
-@router.post("/usuarios", status_code=status.HTTP_201_CREATED, response_model=UsuarioResposta)
-def criar(dados: UsuarioEntrada, _: Administrador, servico: Servico) -> UsuarioResposta:
+@router.post("/usuarios", status_code=status.HTTP_201_CREATED, response_model=UsuarioAdminResposta)
+def criar(dados: UsuarioEntrada, _: Administrador, servico: Servico) -> UsuarioAdminResposta:
     return servico.criar(dados)
 
 
@@ -72,12 +74,17 @@ def salvar_em_lote(dados: UsuarioLoteEntrada, administrador: Administrador, serv
     return servico.salvar_em_lote(dados, administrador)
 
 
-@router.put("/usuarios/{usuario_id}", response_model=UsuarioResposta)
-def atualizar(usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Administrador, servico: Servico) -> UsuarioResposta:
+@router.put("/usuarios/{usuario_id}", response_model=UsuarioAdminResposta)
+def atualizar(usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Administrador, servico: Servico) -> UsuarioAdminResposta:
     return servico.atualizar(usuario_id, dados, administrador)
 
 
-@router.delete("/usuarios/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/usuarios/{usuario_id}/reenviar-verificacao", response_model=MensagemResposta)
+def reenviar_verificacao(usuario_id: UUID, _: Administrador, servico: Servico) -> MensagemResposta:
+    return servico.reenviar_verificacao(usuario_id)
+
+
+@router.delete("/usuarios/{usuario_id}",status_code=status.HTTP_204_NO_CONTENT)
 def excluir(usuario_id: UUID, administrador: Administrador, servico: Servico) -> None:
     servico.excluir(usuario_id, administrador)
 

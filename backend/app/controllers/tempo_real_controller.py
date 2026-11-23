@@ -17,7 +17,7 @@ def _usuario_ativo(usuario_id: UUID) -> bool:
     """Consulta síncrona ao banco; roda em thread para não travar o event loop."""
     with FabricaSessao() as sessao:
         usuario = UsuarioRepository(sessao).buscar_por_id(usuario_id)
-        return usuario is not None and usuario.ativo
+        return usuario is not None and usuario.ativo and usuario.email_verificado_em is not None
 
 
 @router.websocket("/ws/notificacoes")

@@ -12,6 +12,8 @@ export interface Usuario {
   nome: string
   email: string
   perfil: Perfil
+  /** Só na visão do admin (GET /usuarios e respostas do cadastro); ausente nas listas públicas e no token. */
+  emailVerificado?: boolean
 }
 
 export interface DadosUsuario {

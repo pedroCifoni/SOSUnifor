@@ -46,7 +46,10 @@ app.add_middleware(
 
 @app.exception_handler(ErroAplicacao)
 async def tratar_erro_da_aplicacao(_: Request, erro: ErroAplicacao) -> JSONResponse:
-    return JSONResponse(status_code=erro.status_code, content={"detail": erro.mensagem})
+    conteudo = {"detail": erro.mensagem}
+    if erro.codigo:
+        conteudo["codigo"] = erro.codigo
+    return JSONResponse(status_code=erro.status_code, content=conteudo)
 
 
 for router in routers:

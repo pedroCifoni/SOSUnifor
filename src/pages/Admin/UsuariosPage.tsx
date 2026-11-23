@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react'
+import { MailWarning, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react'
 import { CarregarMais } from '@/components/ui/CarregarMais'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { UsuarioFormModal } from '@/components/usuarios/UsuarioFormModal'
@@ -18,6 +18,8 @@ type Formulario = { tipo: 'novo' } | { tipo: 'editar'; usuario: Rascunho }
 
 const LIMITE_POR_PAGINA = 20
 const DEBOUNCE_BUSCA_MS = 300
+// Mesmo teto da API (LIMITE_MAXIMO_USUARIOS).
+const LIMITE_MAXIMO_ADMINS = 200
 const PERFIS = Object.keys(PERFIL_LABEL) as Perfil[]
 
 // Id provisório, só para identificar a linha no rascunho. Não usa crypto.randomUUID():
@@ -73,6 +75,7 @@ export function UsuariosPage() {
   const [formulario, setFormulario] = useState<Formulario | null>(null)
   const [paraExcluir, setParaExcluir] = useState<Rascunho | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const [reenviando, setReenviando] = useState<string | null>(null)
 
   const requisicaoRef = useRef(0)
   const campoBuscaRef = useRef<HTMLInputElement>(null)
@@ -220,7 +223,7 @@ export function UsuariosPage() {
     })
   }
 
-  function aplicarFormulario(dados: DadosUsuario) {
+  async function aplicarFormulario(dados: DadosUsuario) {
     const nome = dados.nome.trim()
     const email = dados.email.trim().toLowerCase()
     const editando = formulario?.tipo === 'editar' ? formulario.usuario : null
@@ -243,6 +246,19 @@ export function UsuariosPage() {
       throw new Error('A senha deve ter ao menos 6 caracteres.')
     }
     if (dados.senha && dados.senha.length < 6) throw new Error('A senha deve ter ao menos 6 caracteres.')
+    // Mesma regra da API: quem troca o próprio e-mail fica sem acesso até confirmá-lo, então precisa
+    // haver outro admin confirmado para corrigir um endereço digitado errado.
+    // A lista na tela é paginada/filtrada, então os administradores são consultados direto na API.
+    const emailSalvo = editando ? originaisPorId[editando.id]?.email : undefined
+    if (editando && editando.id === eu?.id && emailSalvo !== undefined && email !== emailSalvo) {
+      const admins = await usuarioService.listar({ perfil: 'admin', limite: LIMITE_MAXIMO_ADMINS })
+      const outroAdmin = admins.some(
+        (u) => u.id !== eu?.id && u.perfil === 'admin' && u.emailVerificado && !excluidosSet.has(u.id),
+      )
+      if (!outroAdmin) {
+        throw new Error('Para trocar o seu próprio e-mail, é preciso existir outro administrador com e-mail confirmado.')
+      }
+    }
 
     if (editando) {
       alterar(editando.id, { nome, email, perfil: dados.perfil, ...(dados.senha && { senha: dados.senha }) })
@@ -277,8 +293,14 @@ export function UsuariosPage() {
       toast.sucesso(mudancas.total === 1 ? 'Alteração salva.' : `${mudancas.total} alterações salvas.`)
       if (mudancas.criados.length > 0) {
         toast.info(
-          mudancas.criados.length === 1 ? 'O acesso foi enviado por e-mail.' : 'Os acessos foram enviados por e-mail.',
+          mudancas.criados.length === 1
+            ? 'O acesso foi enviado por e-mail. A conta só entra depois de confirmar o e-mail.'
+            : 'Os acessos foram enviados por e-mail. As contas só entram depois de confirmar o e-mail.',
         )
+      }
+      const emailsTrocados = mudancas.editados.filter((u) => originaisPorId[u.id]?.email !== u.email)
+      if (emailsTrocados.length > 0) {
+        toast.info('O novo e-mail precisa ser confirmado: enviamos um link para ele.')
       }
       setCriados([])
       setEditadosPorId({})
@@ -288,6 +310,18 @@ export function UsuariosPage() {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível salvar. Nenhuma alteração foi aplicada.')
     } finally {
       setSalvando(false)
+    }
+  }
+
+  async function reenviarConfirmacao(alvo: Rascunho) {
+    setReenviando(alvo.id)
+    try {
+      const resposta = await usuarioService.reenviarVerificacao(alvo.id)
+      toast.sucesso(resposta.mensagem)
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível reenviar a confirmação.')
+    } finally {
+      setReenviando(null)
     }
   }
 
@@ -456,6 +490,21 @@ export function UsuariosPage() {
                     )}
                   </p>
                   <p className="truncate text-xs text-muted">{u.email}</p>
+                  {!u.novo && u.emailVerificado === false && (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        <MailWarning size={12} aria-hidden /> E-mail não confirmado
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void reenviarConfirmacao(u)}
+                        disabled={reenviando === u.id}
+                        className="text-[11px] font-semibold text-brand-500 hover:text-brand-900 disabled:opacity-60"
+                      >
+                        {reenviando === u.id ? 'Enviando…' : 'Reenviar confirmação'}
+                      </button>
+                    </p>
+                  )}
                 </div>
                 <button
                   aria-label={`Editar ${u.nome}`}

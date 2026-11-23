@@ -82,6 +82,23 @@ class UsuarioRepository:
         consulta = select(func.count()).select_from(Usuario).where(Usuario.tipo_usuario == perfil, Usuario.ativo)
         return self.sessao.scalar(consulta) or 0
 
+    def contar_admins_confirmados(self, exceto: UUID | None = None) -> int:
+        consulta = (
+            select(func.count())
+            .select_from(Usuario)
+            .where(Usuario.tipo_usuario == "admin", Usuario.ativo, Usuario.email_verificado_em.is_not(None))
+        )
+        if exceto is not None:
+            consulta = consulta.where(Usuario.id != exceto)
+        return self.sessao.scalar(consulta) or 0
+
+    def travar(self, usuario_id: UUID) -> None:
+        """Trava a linha da conta até o fim da transação (SELECT ... FOR UPDATE).
+
+        Serializa pedidos simultâneos da mesma conta, como contar e gravar links enviados por e-mail.
+        """
+        self.sessao.execute(select(Usuario.id).where(Usuario.id == usuario_id).with_for_update())
+
     def ids_de_usuarios_online(self, desde: datetime) -> list[UUID]:
         """Usuários comuns que fizeram alguma requisição autenticada a partir de `desde`."""
         consulta = select(Usuario.id).where(
