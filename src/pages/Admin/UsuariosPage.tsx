@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { MailWarning, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react'
+import { PedidosExclusao } from '@/components/privacidade/PedidosExclusao'
 import { CarregarMais } from '@/components/ui/CarregarMais'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { UsuarioFormModal } from '@/components/usuarios/UsuarioFormModal'
@@ -332,6 +333,27 @@ export function UsuariosPage() {
     toast.info('Alterações descartadas.')
   }
 
+  // Conta anonimizada sai da lista (fica inativa) e de qualquer alteração pendente sobre ela.
+  function removerAnonimizado(id: string) {
+    if (resultados?.some((u) => u.id === id)) {
+      setTotalServidor((total) => (total === null ? total : Math.max(0, total - 1)))
+    }
+    setResultados((atual) => atual?.filter((u) => u.id !== id) ?? atual)
+    setOriginaisPorId((atual) => {
+      if (!(id in atual)) return atual
+      const proximo = { ...atual }
+      delete proximo[id]
+      return proximo
+    })
+    setEditadosPorId((atual) => {
+      if (!(id in atual)) return atual
+      const proximo = { ...atual }
+      delete proximo[id]
+      return proximo
+    })
+    setExcluidosIds((atual) => atual.filter((excluido) => excluido !== id))
+  }
+
   function limparFiltros() {
     setTermoDigitado('')
     setBuscaAtiva('')
@@ -361,6 +383,8 @@ export function UsuariosPage() {
           <Plus size={16} /> Novo usuário
         </button>
       </div>
+
+      <PedidosExclusao onAnonimizado={removerAnonimizado} />
 
       <section className="space-y-3 rounded-2xl border border-line bg-white p-3 shadow-sm">
         <form role="search" onSubmit={aoEnviarBusca}>

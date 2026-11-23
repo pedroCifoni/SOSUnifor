@@ -11,6 +11,7 @@ import { VerificarEmailPage } from '@/pages/Login/VerificarEmailPage'
 import { MinhasOcorrenciasPage } from '@/pages/MinhasOcorrencias/MinhasOcorrenciasPage'
 import { NovaDenunciaPage } from '@/pages/NovaDenuncia/NovaDenunciaPage'
 import { PerfilPage } from '@/pages/Perfil/PerfilPage'
+import { PrivacidadePage } from '@/pages/Privacidade/PrivacidadePage'
 import { NovoChamadoPage } from '@/pages/NovoChamado/NovoChamadoPage'
 import { SegurancaHomePage } from '@/pages/Home/SegurancaHomePage'
 import { TecnicoHomePage } from '@/pages/Home/TecnicoHomePage'
@@ -37,6 +38,7 @@ export function AppRoutes() {
       <Route path="/esqueci-senha" element={<EsqueciSenhaPage />} />
       <Route path="/redefinir-senha" element={<RedefinirSenhaPage />} />
       <Route path="/verificar-email" element={<VerificarEmailPage />} />
+      <Route path="/privacidade" element={<PrivacidadePage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>

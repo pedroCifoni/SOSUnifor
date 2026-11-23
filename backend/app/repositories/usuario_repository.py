@@ -99,6 +99,19 @@ class UsuarioRepository:
         """
         self.sessao.execute(select(Usuario.id).where(Usuario.id == usuario_id).with_for_update())
 
+    def travar_e_contar_ativos_por_perfil(self, perfil: str) -> int:
+        """Conta as contas ativas do perfil travando as linhas (SELECT ... FOR UPDATE) até o fim da transação.
+
+        Duas transações que alteram contas deste perfil ao mesmo tempo passam a contar uma de cada vez:
+        a segunda espera a primeira terminar e já enxerga o resultado dela.
+        """
+        consulta = select(Usuario.id).where(Usuario.tipo_usuario == perfil, Usuario.ativo).with_for_update()
+        return len(list(self.sessao.scalars(consulta)))
+
+    def existe_outro_com_nome(self, nome: str, exceto_id: UUID) -> bool:
+        consulta = select(Usuario.id).where(Usuario.nome == nome, Usuario.id != exceto_id).limit(1)
+        return self.sessao.scalar(consulta) is not None
+
     def ids_de_usuarios_online(self, desde: datetime) -> list[UUID]:
         """Usuários comuns que fizeram alguma requisição autenticada a partir de `desde`."""
         consulta = select(Usuario.id).where(
@@ -106,6 +119,15 @@ class UsuarioRepository:
             Usuario.tipo_usuario == "usuario",
             Usuario.ultimo_acesso.is_not(None),
             Usuario.ultimo_acesso >= desde,
+        )
+        return list(self.sessao.scalars(consulta))
+
+    def listar_com_exclusao_pendente(self) -> list[Usuario]:
+        """Titulares que pediram a eliminação dos dados e ainda não foram anonimizados."""
+        consulta = (
+            select(Usuario)
+            .where(Usuario.exclusao_solicitada_em.is_not(None), Usuario.anonimizado_em.is_(None))
+            .order_by(Usuario.exclusao_solicitada_em)
         )
         return list(self.sessao.scalars(consulta))
 

@@ -55,13 +55,13 @@ def resumir(
 
 
 @router.get("/usuarios/segurancas", response_model=list[UsuarioResposta])
-def listar_segurancas(_: UsuarioAtual, servico: Servico) -> list[UsuarioResposta]:
-    return servico.listar_por_perfil("seguranca")
+def listar_segurancas(usuario: UsuarioAtual, servico: Servico) -> list[UsuarioResposta]:
+    return servico.listar_por_perfil("seguranca", com_email=usuario.tipo_usuario == "admin")
 
 
 @router.get("/usuarios/tecnicos", response_model=list[UsuarioResposta])
-def listar_tecnicos(_: UsuarioAtual, servico: Servico) -> list[UsuarioResposta]:
-    return servico.listar_por_perfil("tecnico")
+def listar_tecnicos(usuario: UsuarioAtual, servico: Servico) -> list[UsuarioResposta]:
+    return servico.listar_por_perfil("tecnico", com_email=usuario.tipo_usuario == "admin")
 
 
 @router.post("/usuarios", status_code=status.HTTP_201_CREATED, response_model=UsuarioAdminResposta)

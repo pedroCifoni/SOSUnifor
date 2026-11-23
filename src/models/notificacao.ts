@@ -1,4 +1,4 @@
-export type TipoNotificacao = 'criada' | 'encaminhada' | 'concluida' | 'alerta'
+export type TipoNotificacao = 'criada' | 'encaminhada' | 'concluida' | 'alerta' | 'privacidade'
 
 export interface Notificacao {
   id: string
@@ -6,7 +6,8 @@ export interface Notificacao {
   tipo: TipoNotificacao
   titulo: string
   mensagem: string
-  ocorrenciaId: string
+  /** Vazio nos avisos que não tratam de uma ocorrência (ex.: pedido de exclusão de dados). */
+  ocorrenciaId: string | null
   criadaEm: string
   lida: boolean
 }

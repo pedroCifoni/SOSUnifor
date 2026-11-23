@@ -7,7 +7,7 @@ e cadastra as contas iniciais quando ainda não existem.
 from datetime import datetime, timezone
 import logging
 
-from sqlalchemy import inspect, select, text
+from sqlalchemy import func, inspect, select, text
 from sqlalchemy.orm import Session
 
 import app.entities  # noqa: F401  (registra as tabelas em Base.metadata)
@@ -49,11 +49,58 @@ def _executar_etapas() -> None:
     remover_email_em_claro_dos_links_de_confirmacao()
     atualizar_ocorrencias_legadas()
     Base.metadata.create_all(bind=engine)
+    adicionar_colunas_lgpd()
     criar_indices_de_consulta()
     preparar_busca_de_usuarios()
     preparar_sequencia_de_protocolo()
     ativar_limite_unifor_revisado()
     criar_usuarios_iniciais()
+    aplicar_politica_de_retencao()
+
+
+# LGPD: colunas novas em tabelas que já existem em produção. Todas aceitam nulo, então as linhas
+# antigas continuam válidas (sem aceite registrado, sem pedido de exclusão, não anonimizadas).
+COLUNAS_LGPD = {
+    "credentials": [
+        ("termos_aceitos_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
+        ("termos_versao", "VARCHAR(20)", "VARCHAR(20)"),
+        ("exclusao_solicitada_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
+        ("anonimizado_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
+    ],
+    "eventos_ocorrencia": [
+        ("destinatario_id", "UUID", "CHAR(32)"),
+    ],
+}
+
+
+def adicionar_colunas_lgpd() -> None:
+    """Colunas da LGPD e notificações sem ocorrência (aviso de pedido de exclusão). Idempotente."""
+    postgres = engine.dialect.name == "postgresql"
+    inspecao = inspect(engine)
+    with engine.begin() as conexao:
+        for tabela, colunas in COLUNAS_LGPD.items():
+            existentes = {coluna["name"] for coluna in inspecao.get_columns(tabela)}
+            for nome, tipo_postgres, tipo_outros in colunas:
+                if postgres:
+                    conexao.execute(text(f"ALTER TABLE {tabela} ADD COLUMN IF NOT EXISTS {nome} {tipo_postgres}"))
+                elif nome not in existentes:
+                    conexao.execute(text(f"ALTER TABLE {tabela} ADD COLUMN {nome} {tipo_outros}"))
+        if postgres:
+            conexao.execute(text("ALTER TABLE notificacoes ALTER COLUMN ocorrencia_id DROP NOT NULL"))
+
+
+def aplicar_politica_de_retencao() -> None:
+    """Apaga o que passou do prazo de guarda (ver app/services/retencao_service.py e docs/LGPD.md)."""
+    from app.services.retencao_service import RetencaoService
+
+    with Session(engine) as banco:
+        resultado = RetencaoService(banco).executar()
+    if resultado.total:
+        logging.getLogger(__name__).info(
+            "Retenção LGPD: %s token(s) vencido(s) e %s notificação(ões) lida(s) antiga(s) apagados.",
+            resultado.tokens_apagados,
+            resultado.notificacoes_apagadas,
+        )
 
 
 # create_all não cria índices novos em tabelas que já existem; por isso ficam aqui, idempotentes.
@@ -197,8 +244,15 @@ def preparar_sequencia_de_protocolo() -> None:
 
 
 def criar_usuarios_iniciais() -> None:
-    """Cria as contas iniciais que ainda não existem (já com o e-mail confirmado)."""
+    """Cria as contas iniciais que ainda não existem (já com o e-mail confirmado).
+
+    Depois que alguma conta foi anonimizada (LGPD), o e-mail dela deixa de existir no banco; se a conta
+    anonimizada fosse uma das iniciais, ela voltaria a ser criada com a senha padrão a cada subida.
+    Por isso, havendo conta anonimizada, as contas iniciais não são recriadas.
+    """
     with Session(engine) as banco:
+        if banco.scalar(select(func.count()).select_from(Usuario).where(Usuario.anonimizado_em.is_not(None))):
+            return
         emails_existentes = set(banco.scalars(select(Usuario.email)).all())
         agora = datetime.now(timezone.utc)
         for nome, email, perfil in CONTAS_INICIAIS:

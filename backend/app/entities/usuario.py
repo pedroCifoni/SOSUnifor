@@ -22,3 +22,8 @@ class Usuario(Base):
     ultimo_acesso: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Quando a pessoa comprovou ser dona do e-mail. Nulo = ainda não confirmado (o login é recusado).
     email_verificado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    # LGPD: ciência da Política de Privacidade, pedido de eliminação e anonimização.
+    termos_aceitos_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    termos_versao: Mapped[str | None] = mapped_column(String(20), nullable=True)
+    exclusao_solicitada_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    anonimizado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
