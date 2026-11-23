@@ -6,7 +6,11 @@ configuração do arquivo .env local nunca seja usada pelos testes.
 
 import os
 
-os.environ["DATABASE_URL"] = "postgresql+psycopg://unisos:uni12345@localhost:5433/unisos_testes"
+# TESTES_DATABASE_URL permite que execuções em paralelo usem bancos diferentes
+# (ex.: unisos_testes_lgpd), sem uma apagar os dados da outra. O banco precisa existir.
+os.environ["DATABASE_URL"] = os.environ.get(
+    "TESTES_DATABASE_URL", "postgresql+psycopg://unisos:uni12345@localhost:5433/unisos_testes"
+)
 os.environ["SMTP_HOST"] = ""
 os.environ["BREVO_API_KEY"] = ""  # nunca usar uma chave real nos testes
 # Porta fechada de propósito: os testes não publicam no RabbitMQ de desenvolvimento
