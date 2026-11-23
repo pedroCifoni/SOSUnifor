@@ -15,21 +15,36 @@ interface Rascunho extends Usuario {
 
 type Formulario = { tipo: 'novo' } | { tipo: 'editar'; usuario: Rascunho }
 
-const novoId = () => `novo-${crypto.randomUUID()}`
+// Id provisório, só para identificar a linha no rascunho. Não usa crypto.randomUUID():
+// ele não existe quando o sistema é aberto por HTTP pelo IP da rede (ex.: no celular).
+let contadorNovos = 0
+const novoId = () => `novo-${Date.now().toString(36)}-${++contadorNovos}`
 
 export function UsuariosPage() {
   const { usuario: eu } = useAuth()
   const toast = useToast()
   const [salvos, setSalvos] = useState<Usuario[] | null>(null)
   const [rascunho, setRascunho] = useState<Rascunho[]>([])
+  const [erroCarregamento, setErroCarregamento] = useState<string | null>(null)
   const [formulario, setFormulario] = useState<Formulario | null>(null)
   const [paraExcluir, setParaExcluir] = useState<Rascunho | null>(null)
   const [salvando, setSalvando] = useState(false)
 
   const carregar = useCallback(async () => {
-    const lista = await usuarioService.listar()
-    setSalvos(lista)
-    setRascunho(lista)
+    setErroCarregamento(null)
+    try {
+      const lista = await usuarioService.listar()
+      setSalvos(lista)
+      setRascunho(lista)
+    } catch (erro) {
+      setSalvos(null)
+      setRascunho([])
+      setErroCarregamento(
+        erro instanceof Error
+          ? erro.message
+          : 'Não foi possível carregar os usuários. Verifique se o backend está ligado.',
+      )
+    }
   }, [])
 
   useEffect(() => {
@@ -88,6 +103,9 @@ export function UsuariosPage() {
         exclusoes: mudancas.excluidos.map((usuario) => usuario.id),
       })
       toast.sucesso(mudancas.total === 1 ? 'Alteração salva.' : `${mudancas.total} alterações salvas.`)
+      if (mudancas.criados.length > 0) {
+        toast.info(mudancas.criados.length === 1 ? 'O acesso foi enviado por e-mail.' : 'Os acessos foram enviados por e-mail.')
+      }
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível salvar. Nenhuma alteração foi aplicada.')
     } finally {
@@ -106,7 +124,9 @@ export function UsuariosPage() {
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-24">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted">{salvos ? `${rascunho.length} usuários` : 'Carregando…'}</p>
+        <p className="text-sm text-muted">
+          {erroCarregamento ? 'Não foi possível carregar' : salvos ? `${rascunho.length} usuários` : 'Carregando…'}
+        </p>
         <button
           onClick={() => setFormulario({ tipo: 'novo' })}
           className="inline-flex h-10 items-center gap-1.5 rounded-xl bg-brand-900 px-4 text-xs font-semibold text-white hover:bg-brand-700"
@@ -114,6 +134,19 @@ export function UsuariosPage() {
           <Plus size={16} /> Novo usuário
         </button>
       </div>
+
+      {erroCarregamento && (
+        <section className="rounded-2xl border border-sos-200 bg-sos-50 p-4 text-sm text-sos-700" role="alert">
+          <p className="font-semibold">Não foi possível abrir os usuários.</p>
+          <p className="mt-1 text-xs">{erroCarregamento}</p>
+          <button
+            onClick={() => void carregar()}
+            className="mt-3 rounded-lg bg-sos-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sos-800"
+          >
+            Tentar novamente
+          </button>
+        </section>
+      )}
 
       <ul className="space-y-3">
         {ordenados.map((u) => {

@@ -24,3 +24,7 @@ class NotificacaoResposta(RespostaDTO):
             criada_em=notificacao.criada_em.isoformat(),
             lida=notificacao.lida,
         )
+
+
+class ResumoNotificacoesResposta(RespostaDTO):
+    nao_lidas: int

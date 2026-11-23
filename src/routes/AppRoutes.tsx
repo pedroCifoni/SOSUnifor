@@ -4,7 +4,9 @@ import { AppLayout } from '@/components/layout/AppLayout'
 import { PainelAdminPage } from '@/pages/Admin/PainelAdminPage'
 import { UsuariosPage } from '@/pages/Admin/UsuariosPage'
 import { HomePage } from '@/pages/Home/HomePage'
+import { EsqueciSenhaPage } from '@/pages/Login/EsqueciSenhaPage'
 import { LoginPage } from '@/pages/Login/LoginPage'
+import { RedefinirSenhaPage } from '@/pages/Login/RedefinirSenhaPage'
 import { MinhasOcorrenciasPage } from '@/pages/MinhasOcorrencias/MinhasOcorrenciasPage'
 import { NovaDenunciaPage } from '@/pages/NovaDenuncia/NovaDenunciaPage'
 import { PerfilPage } from '@/pages/Perfil/PerfilPage'
@@ -31,6 +33,8 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/esqueci-senha" element={<EsqueciSenhaPage />} />
+      <Route path="/redefinir-senha" element={<RedefinirSenhaPage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>

@@ -1,0 +1,3 @@
+# Dependências exclusivas da suíte automatizada.
+pytest>=9,<10
+httpx>=0.27,<0.29

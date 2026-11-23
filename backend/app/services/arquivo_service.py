@@ -58,9 +58,10 @@ class ArquivoService:
         return arquivo
 
     def _usuario_pode_acessar(self, nome_armazenado: str, usuario: Usuario) -> bool:
+        """O banco devolve só as ocorrências cujo JSON de anexos cita o arquivo; aqui se confere a URL exata."""
         sufixo = f"/arquivos/{nome_armazenado}"
         return any(
             OcorrenciaService.pode_acessar(ocorrencia, usuario)
-            for ocorrencia in self.ocorrencias.listar_com_anexos()
-            if any(isinstance(anexo, dict) and str(anexo.get("url", "")).endswith(sufixo) for anexo in ocorrencia.anexos)
+            for ocorrencia in self.ocorrencias.listar_que_citam_arquivo(nome_armazenado)
+            if any(isinstance(anexo, dict) and str(anexo.get("url", "")).endswith(sufixo) for anexo in ocorrencia.anexos or [])
         )

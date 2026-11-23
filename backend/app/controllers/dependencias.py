@@ -13,6 +13,7 @@ from app.entities.usuario import Usuario
 from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
 from app.services.auth_service import AuthService
+from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
 from app.services.usuario_service import UsuarioService
@@ -24,7 +25,7 @@ _esquema_bearer = HTTPBearer(auto_error=False)
 
 # ---------- services ----------
 def _avisador(tarefas: BackgroundTasks):
-    """Agenda o aviso para depois que a resposta for enviada."""
+    """Agenda o aviso para depois que a resposta for enviada (RabbitMQ; sem ele, só este processo)."""
 
     def avisar(destinatarios: list[UUID]) -> None:
         tarefas.add_task(mensageria.publicar, destinatarios)
@@ -32,12 +33,21 @@ def _avisador(tarefas: BackgroundTasks):
     return avisar
 
 
+def _emails(tarefas: BackgroundTasks) -> EmailService:
+    """E-mails são enviados depois que a resposta sai, para a requisição não esperar o servidor SMTP."""
+    return EmailService(agendar=tarefas.add_task)
+
+
 def auth_service(banco: Banco) -> AuthService:
     return AuthService(banco)
 
 
-def usuario_service(banco: Banco) -> UsuarioService:
-    return UsuarioService(banco)
+def auth_service_com_email(banco: Banco, tarefas: BackgroundTasks) -> AuthService:
+    return AuthService(banco, emails=_emails(tarefas))
+
+
+def usuario_service(banco: Banco, tarefas: BackgroundTasks) -> UsuarioService:
+    return UsuarioService(banco, emails=_emails(tarefas))
 
 
 def area_campus_service(banco: Banco) -> AreaCampusService:

@@ -54,7 +54,7 @@ export function NovoChamadoPage() {
     return (
       <SuccessPanel
         titulo="Pedido de suporte enviado!"
-        mensagem="O administrador receberá a solicitação e a encaminhará para a Equipe de Segurança."
+        mensagem="O administrador receberá a solicitação e a encaminhará para um técnico de informática."
         protocolo={criada.protocolo}
       />
     )

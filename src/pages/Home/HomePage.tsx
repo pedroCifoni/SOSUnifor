@@ -2,10 +2,12 @@ import { useCallback, useEffect, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { ClipboardList, LayoutDashboard, ShieldAlert, Wrench } from 'lucide-react'
 import { OcorrenciaModal } from '@/components/ocorrencias/OcorrenciaModal'
+import { CarregarMais } from '@/components/ui/CarregarMais'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { useHoldPress } from '@/hooks/useHoldPress'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
+import { comparar, useOcorrenciasPaginadas } from '@/hooks/useOcorrenciasPaginadas'
 import { useToast } from '@/hooks/useToast'
 import { ENCAMINHAR_LABEL, type Ocorrencia } from '@/models/ocorrencia'
 import type { Usuario } from '@/models/usuario'
@@ -43,19 +45,18 @@ export function HomePage() {
   const { usuario } = useAuth()
   const toast = useToast()
   const { revisao } = useNotificacoes()
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[]>([])
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
   const [segurancas, setSegurancas] = useState<Usuario[]>([])
+  const [tecnicos, setTecnicos] = useState<Usuario[]>([])
   const navigate = useNavigate()
 
   const atendimento = usuario?.perfil === 'admin'
 
-  const carregar = useCallback(async () => {
-    if (!usuario) return
-    setOcorrencias(
-      atendimento ? await ocorrenciaService.listar() : await ocorrenciaService.listarPorAutor(usuario.id),
-    )
-  }, [usuario, atendimento])
+  // Admin: fila de pendentes (paginada). Demais perfis: os 3 chamados mais recentes (sem SOS), para o resumo da home.
+  const filaPendentes = useOcorrenciasPaginadas({ status: 'pendente', habilitado: !!usuario && atendimento, revisao })
+  const recentesManutencao = useOcorrenciasPaginadas({ tipo: 'manutencao', limite: 3, habilitado: !!usuario && !atendimento, revisao })
+  const recentesDenuncia = useOcorrenciasPaginadas({ tipo: 'denuncia', limite: 3, habilitado: !!usuario && !atendimento, revisao })
+  const { recarregar: recarregarFila } = filaPendentes
 
   async function encaminhar(id: string, destinoId?: string) {
     if (!destinoId) return
@@ -63,19 +64,16 @@ export function HomePage() {
       await ocorrenciaService.encaminhar(id, destinoId)
       toast.sucesso('Ocorrência encaminhada.')
       setSelecionada(null)
-      void carregar()
+      void recarregarFila()
     } catch {
       toast.erro('Não foi possível encaminhar a ocorrência.')
     }
   }
 
   useEffect(() => {
-    void carregar()
-  }, [carregar, revisao])
-
-  useEffect(() => {
     if (atendimento) {
       void usuarioService.listarSegurancas().then(setSegurancas)
+      void usuarioService.listarTecnicos().then(setTecnicos)
     }
   }, [atendimento])
 
@@ -113,8 +111,8 @@ export function HomePage() {
   const { progresso, iniciar, cancelar } = useHoldPress(acionarSos, 2000)
 
   const minhas = atendimento
-    ? ocorrencias.filter((o) => o.status === 'pendente').sort((a, b) => Number(b.tipo === 'sos') - Number(a.tipo === 'sos'))
-    : ocorrencias.filter((o) => o.tipo !== 'sos').slice(0, 3)
+    ? [...(filaPendentes.itens ?? [])].sort((a, b) => Number(b.tipo === 'sos') - Number(a.tipo === 'sos'))
+    : [...(recentesManutencao.itens ?? []), ...(recentesDenuncia.itens ?? [])].sort(comparar).slice(0, 3)
 
   return (
     <div className="space-y-6">
@@ -203,13 +201,20 @@ export function HomePage() {
             </li>
           )}
         </ul>
+        {atendimento && (
+          <CarregarMais
+            visivel={filaPendentes.temMais}
+            carregando={filaPendentes.carregandoMais}
+            onClick={() => void filaPendentes.carregarMais()}
+          />
+        )}
       </section>
 
       {selecionada && (
         <OcorrenciaModal
           ocorrencia={selecionada}
           onClose={() => setSelecionada(null)}
-          destinos={atendimento && selecionada.status === 'pendente' ? segurancas : undefined}
+          destinos={atendimento && selecionada.status === 'pendente' ? (selecionada.tipo === 'manutencao' ? tecnicos : segurancas) : undefined}
           acao={
             atendimento && selecionada.status === 'pendente'
               ? { label: ENCAMINHAR_LABEL[selecionada.tipo], onClick: (destinoId) => void encaminhar(selecionada.id, destinoId) }

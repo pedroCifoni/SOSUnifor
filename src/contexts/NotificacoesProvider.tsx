@@ -8,6 +8,8 @@ import { API_URL } from '@/api/config'
 import { tokenStorage } from '@/api/tokenStorage'
 
 const INTERVALO_CONTINGENCIA_MS = 60_000
+// O sino mostra só as notificações mais recentes; o contador vem de /notificacoes/resumo.
+const LIMITE_NOTIFICACOES = 30
 
 function criarUrlWebSocket(token: string) {
   const base = API_URL.replace(/^http/, 'ws')
@@ -18,14 +20,20 @@ export function NotificacoesProvider({ children }: { children: ReactNode }) {
   const { usuario } = useAuth()
   const toast = useToast()
   const [notificacoes, setNotificacoes] = useState<Notificacao[]>([])
+  const [naoLidas, setNaoLidas] = useState(0)
   const [revisao, setRevisao] = useState(0)
   const vistas = useRef<Set<string> | null>(null)
   const usuarioId = usuario?.id
 
   const atualizar = useCallback(async () => {
     if (!usuarioId) return
-    const lista = await notificacaoService.listar(usuarioId)
+    const [lista, resumo] = await Promise.all([
+      notificacaoService.listar({ limite: LIMITE_NOTIFICACOES }),
+      notificacaoService.resumo().catch(() => null),
+    ])
     setNotificacoes(lista)
+    // Sem o resumo, conta ao menos as não lidas da página carregada.
+    setNaoLidas(resumo?.naoLidas ?? lista.filter((n) => !n.lida).length)
 
     if (vistas.current === null) {
       vistas.current = new Set(lista.map((n) => n.id))
@@ -42,10 +50,12 @@ export function NotificacoesProvider({ children }: { children: ReactNode }) {
     vistas.current = null
     if (!usuarioId) {
       setNotificacoes([])
+      setNaoLidas(0)
       return
     }
-    void atualizar()
-    const intervalo = setInterval(() => void atualizar(), INTERVALO_CONTINGENCIA_MS)
+    const atualizarComSeguranca = () => void atualizar().catch(() => undefined)
+    atualizarComSeguranca()
+    const intervalo = setInterval(atualizarComSeguranca, INTERVALO_CONTINGENCIA_MS)
     const token = tokenStorage.get()
     let websocket: WebSocket | null = null
     let reconexao: ReturnType<typeof setTimeout> | null = null
@@ -54,7 +64,7 @@ export function NotificacoesProvider({ children }: { children: ReactNode }) {
     function conectarTempoReal() {
       if (!token || !ativo) return
       websocket = new WebSocket(criarUrlWebSocket(token))
-      websocket.onmessage = () => void atualizar()
+      websocket.onmessage = atualizarComSeguranca
       websocket.onclose = () => {
         if (ativo) reconexao = setTimeout(conectarTempoReal, 5_000)
       }
@@ -70,13 +80,14 @@ export function NotificacoesProvider({ children }: { children: ReactNode }) {
 
   const marcarTodasLidas = useCallback(async () => {
     if (!usuarioId) return
-    await notificacaoService.marcarTodasLidas(usuarioId)
+    await notificacaoService.marcarTodasLidas()
     setNotificacoes((atual) => atual.map((n) => ({ ...n, lida: true })))
+    setNaoLidas(0)
   }, [usuarioId])
 
   const value = useMemo(
-    () => ({ notificacoes, naoLidas: notificacoes.filter((n) => !n.lida).length, revisao, marcarTodasLidas }),
-    [notificacoes, revisao, marcarTodasLidas],
+    () => ({ notificacoes, naoLidas, revisao, marcarTodasLidas }),
+    [notificacoes, naoLidas, revisao, marcarTodasLidas],
   )
 
   return <NotificacoesContext.Provider value={value}>{children}</NotificacoesContext.Provider>

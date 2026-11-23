@@ -51,7 +51,7 @@ export function SosPage() {
 
   if (!ocorrencia) return <p className="py-16 text-center text-sm text-muted">Carregando alerta…</p>
 
-  const possuiCoordenadas = ocorrencia.latitude !== undefined && ocorrencia.longitude !== undefined
+  const possuiCoordenadas = ocorrencia.latitude != null && ocorrencia.longitude != null
 
   return (
     <div className="space-y-5">

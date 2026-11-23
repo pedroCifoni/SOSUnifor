@@ -1,14 +1,18 @@
+import re
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlparse
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.excecoes import AcessoNegadoErro, NaoEncontradoErro, RegraDeNegocioErro
 from app.dtos.ocorrencia_dto import (
+    CursorPagina,
     EncaminhamentoEntrada,
     OcorrenciaDetalheResposta,
     OcorrenciaEntrada,
     OcorrenciaResposta,
+    ResumoOcorrenciasResposta,
     StatusEntrada,
 )
 from app.entities.ocorrencia import Ocorrencia
@@ -22,7 +26,17 @@ from app.services.notificacao_service import AvisarEmTempoReal, NotificacaoServi
 
 # Usuários com acesso nos últimos 30 s recebem o alerta de "zona vermelha" quando alguém aciona um SOS.
 JANELA_USUARIO_ONLINE = timedelta(seconds=30)
+# Números do protocolo já usados fora da sequência são pulados; acima disso algo está errado.
+TENTATIVAS_PROTOCOLO = 50
 PERFIS_DE_ATENDIMENTO = {"seguranca", "tecnico"}
+
+# Formato exato dos nomes gerados por ArquivoService.salvar: UUID + extensão permitida.
+PADRAO_URL_ANEXO = re.compile(
+    r"/arquivos/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(?:jpg|jpeg|png|webp|mp4))$"
+)
+# Chamados de manutenção vão para o técnico; SOS e denúncias, para a segurança.
+PERFIL_RESPONSAVEL_POR_TIPO = {"manutencao": "tecnico"}
+PERFIL_RESPONSAVEL_PADRAO = "seguranca"
 
 TITULO_NOVA_OCORRENCIA = {"sos": "SOS acionado", "manutencao": "Novo chamado de manutenção", "denuncia": "Nova denúncia"}
 DESCRICAO_DO_STATUS = {
@@ -45,19 +59,39 @@ class OcorrenciaService:
         self.avisar = avisar
 
     # ---------- consultas ----------
-    def listar(self, usuario: Usuario) -> list[OcorrenciaResposta]:
-        """Usuário vê as próprias; segurança vê as encaminhadas a ela; admin vê todas."""
+    def listar(
+        self,
+        usuario: Usuario,
+        cursor: CursorPagina | None = None,
+        limite: int = 50,
+        status: str | None = None,
+        tipo: str | None = None,
+    ) -> list[OcorrenciaResposta]:
+        """Usuário vê as próprias; segurança/técnico veem as encaminhadas a eles; admin vê todas."""
+        cursor = cursor or CursorPagina()
+        linhas = self.ocorrencias.listar_com_nome_do_autor(
+            **self._filtro_de_visibilidade(usuario),
+            status=status,
+            tipo=tipo,
+            antes_de=cursor.antes_de,
+            antes_id=cursor.antes_id,
+            limite=limite,
+        )
+        return [OcorrenciaResposta.de_entidade(ocorrencia, self._solicitante(ocorrencia, nome)) for ocorrencia, nome in linhas]
+
+    def resumir(self, usuario: Usuario) -> ResumoOcorrenciasResposta:
+        """Totais por status e por tipo, contados no banco com a mesma regra de visibilidade da listagem."""
+        return ResumoOcorrenciasResposta.de_contagens(
+            self.ocorrencias.contar_por_status_e_tipo(**self._filtro_de_visibilidade(usuario))
+        )
+
+    @staticmethod
+    def _filtro_de_visibilidade(usuario: Usuario) -> dict[str, UUID]:
         if usuario.tipo_usuario == "usuario":
-            ocorrencias = self.ocorrencias.listar(autor_id=usuario.id)
-        elif usuario.tipo_usuario in PERFIS_DE_ATENDIMENTO:
-            ocorrencias = self.ocorrencias.listar(responsavel_id=usuario.id)
-        else:
-            ocorrencias = self.ocorrencias.listar()
-        nomes = self.usuarios.nomes_por_id()
-        return [
-            OcorrenciaResposta.de_entidade(ocorrencia, self._solicitante(ocorrencia, nomes.get(ocorrencia.autor_id)))
-            for ocorrencia in ocorrencias
-        ]
+            return {"autor_id": usuario.id}
+        if usuario.tipo_usuario in PERFIS_DE_ATENDIMENTO:
+            return {"responsavel_id": usuario.id}
+        return {}
 
     def detalhar(self, ocorrencia_id: UUID, usuario: Usuario) -> OcorrenciaDetalheResposta:
         ocorrencia = self.buscar_acessivel(ocorrencia_id, usuario)
@@ -81,6 +115,7 @@ class OcorrenciaService:
     def criar(self, dados: OcorrenciaEntrada, autor: Usuario) -> OcorrenciaResposta:
         if (dados.latitude is None) != (dados.longitude is None):
             raise RegraDeNegocioErro("Envie latitude e longitude juntas.")
+        self._validar_anexos(dados)
 
         ocorrencia = self.ocorrencias.adicionar(
             Ocorrencia(
@@ -110,6 +145,28 @@ class OcorrenciaService:
         self.sessao.refresh(ocorrencia)
         return OcorrenciaResposta.de_entidade(ocorrencia, "Anônimo" if ocorrencia.anonima else autor.nome)
 
+    def _validar_anexos(self, dados: OcorrenciaEntrada) -> None:
+        """Só aceita anexos enviados por POST /arquivos e que ainda não pertençam a outra ocorrência.
+
+        O download libera o arquivo a quem pode ver uma ocorrência que o cita. Sem esta regra, alguém
+        que soubesse o nome de um arquivo alheio poderia citá-lo na própria ocorrência e baixá-lo.
+        """
+        for anexo in dados.anexos:
+            if not anexo.url:
+                continue
+            encontrado = PADRAO_URL_ANEXO.search(urlparse(anexo.url).path)
+            if encontrado is None:
+                raise RegraDeNegocioErro("Anexo inválido. Envie o arquivo novamente.")
+            nome = encontrado.group(1)
+            sufixo = f"/arquivos/{nome}"
+            ja_usado = any(
+                isinstance(existente, dict) and urlparse(str(existente.get("url") or "")).path.endswith(sufixo)
+                for ocorrencia in self.ocorrencias.listar_que_citam_arquivo(nome)
+                for existente in ocorrencia.anexos or []
+            )
+            if ja_usado:
+                raise RegraDeNegocioErro("Anexo inválido. Envie o arquivo novamente.")
+
     def _definir_local(self, dados: OcorrenciaEntrada) -> str:
         """No SOS o local vem do GPS, identificado pelas áreas do campus; nos demais, do formulário."""
         if dados.tipo != "sos":
@@ -136,16 +193,28 @@ class OcorrenciaService:
         return online
 
     def _proximo_protocolo(self) -> str:
-        return f"#{datetime.now(timezone.utc).year}-{self.ocorrencias.contar() + 1:04d}"
+        """Pula números já gravados por fora da sequência (ex.: instância antiga ainda ativa durante um deploy)."""
+        ano = datetime.now(timezone.utc).year
+        for _ in range(TENTATIVAS_PROTOCOLO):
+            protocolo = f"#{ano}-{self.ocorrencias.proximo_numero_protocolo():04d}"
+            if not self.ocorrencias.protocolo_existe(protocolo):
+                return protocolo
+        raise RegraDeNegocioErro("Não foi possível gerar o protocolo. Tente novamente.")
 
     # ---------- atendimento ----------
     def encaminhar(self, ocorrencia_id: UUID, dados: EncaminhamentoEntrada, administrador: Usuario) -> OcorrenciaResposta:
-        """O administrador encaminha a ocorrência para a Equipe de Segurança, inclusive chamados de manutenção."""
+        """O administrador encaminha manutenção para um técnico e SOS/denúncia para a Equipe de Segurança."""
         ocorrencia = self.ocorrencias.buscar_por_id(ocorrencia_id)
-        responsavel = self.usuarios.buscar_por_id(UUID(dados.responsavel_id))
         if ocorrencia is None:
             raise NaoEncontradoErro("Ocorrência não encontrada.")
-        if responsavel is None or not responsavel.ativo or responsavel.tipo_usuario != "seguranca":
+        try:
+            responsavel = self.usuarios.buscar_por_id(UUID(dados.responsavel_id))
+        except ValueError:
+            responsavel = None
+        perfil_esperado = PERFIL_RESPONSAVEL_POR_TIPO.get(ocorrencia.tipo, PERFIL_RESPONSAVEL_PADRAO)
+        if responsavel is None or not responsavel.ativo or responsavel.tipo_usuario != perfil_esperado:
+            if perfil_esperado == "tecnico":
+                raise RegraDeNegocioErro("Chamados de manutenção devem ser encaminhados a um técnico ativo.")
             raise RegraDeNegocioErro("Responsável da segurança inválido.")
 
         ocorrencia.responsavel_id = responsavel.id
@@ -214,5 +283,7 @@ class OcorrenciaService:
         return nome_do_autor or "Usuário"
 
     def _solicitante_do_banco(self, ocorrencia: Ocorrencia) -> str:
+        if ocorrencia.anonima:
+            return "Anônimo"
         autor = self.usuarios.buscar_por_id(ocorrencia.autor_id)
         return self._solicitante(ocorrencia, autor.nome if autor else None)

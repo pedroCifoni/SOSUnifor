@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useNavigate } from 'react-router-dom'
 import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
@@ -71,6 +71,11 @@ export function LoginPage() {
             }
           />
 
+          <div className="-mt-1 text-right">
+            <Link to="/esqueci-senha" className="text-xs font-semibold text-brand-500 hover:text-brand-900">
+              Esqueci minha senha
+            </Link>
+          </div>
 
           <Button type="submit" loading={carregando} disabled={!email || !senha}>
             Entrar
