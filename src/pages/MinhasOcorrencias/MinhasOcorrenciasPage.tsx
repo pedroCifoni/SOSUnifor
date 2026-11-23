@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { BellRing, ChevronRight, ShieldAlert, Wrench, type LucideIcon } from 'lucide-react'
 import { OcorrenciaModal } from '@/components/ocorrencias/OcorrenciaModal'
+import { CarregarMais } from '@/components/ui/CarregarMais'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
-import type { Ocorrencia, TipoOcorrencia } from '@/models/ocorrencia'
-import { ocorrenciaService } from '@/services/ocorrenciaService'
+import { useOcorrenciasPaginadas } from '@/hooks/useOcorrenciasPaginadas'
+import { STATUS_ABERTOS, type Ocorrencia, type StatusOcorrencia, type TipoOcorrencia } from '@/models/ocorrencia'
 
 type Aba = 'todas' | 'abertas' | 'concluidas'
 
@@ -14,6 +15,13 @@ const ABAS: { id: Aba; label: string }[] = [
   { id: 'abertas', label: 'Abertas' },
   { id: 'concluidas', label: 'Concluídas' },
 ]
+
+// Filtro de status enviado à API em cada aba.
+const STATUS_POR_ABA: Record<Aba, StatusOcorrencia | StatusOcorrencia[] | undefined> = {
+  todas: undefined,
+  abertas: STATUS_ABERTOS,
+  concluidas: 'concluido',
+}
 
 const ICONES: Record<TipoOcorrencia, LucideIcon> = {
   manutencao: Wrench,
@@ -24,28 +32,10 @@ const ICONES: Record<TipoOcorrencia, LucideIcon> = {
 export function MinhasOcorrenciasPage() {
   const { usuario } = useAuth()
   const { revisao } = useNotificacoes()
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[] | null>(null)
   const [aba, setAba] = useState<Aba>('todas')
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
-
-  useEffect(() => {
-    if (!usuario) return
-    let ativo = true
-    ocorrenciaService.listarPorAutor(usuario.id).then((lista) => {
-      if (!ativo) return
-      setOcorrencias(lista)
-    })
-    return () => {
-      ativo = false
-    }
-  }, [usuario, revisao])
-
-  const visiveis = useMemo(() => {
-    const lista = ocorrencias ?? []
-    if (aba === 'abertas') return lista.filter((o) => o.status !== 'concluido')
-    if (aba === 'concluidas') return lista.filter((o) => o.status === 'concluido')
-    return lista
-  }, [ocorrencias, aba])
+  const lista = useOcorrenciasPaginadas({ status: STATUS_POR_ABA[aba], habilitado: !!usuario, revisao })
+  const visiveis = lista.itens ?? []
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -65,7 +55,7 @@ export function MinhasOcorrenciasPage() {
         ))}
       </div>
 
-      {ocorrencias === null ? (
+      {lista.itens === null ? (
         <p className="py-12 text-center text-sm text-muted">Carregando ocorrências…</p>
       ) : visiveis.length === 0 ? (
         <p className="py-12 text-center text-sm text-muted">Nenhuma ocorrência nesta aba.</p>
@@ -95,6 +85,7 @@ export function MinhasOcorrenciasPage() {
           })}
         </ul>
       )}
+      <CarregarMais visivel={lista.temMais} carregando={lista.carregandoMais} onClick={() => void lista.carregarMais()} />
       {selecionada && <OcorrenciaModal ocorrencia={selecionada} onClose={() => setSelecionada(null)} />}
     </div>
   )

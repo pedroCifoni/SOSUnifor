@@ -21,13 +21,78 @@ CONTAS_INICIAIS = [
 ]
 SENHA_INICIAL = "123456"
 
+# Trava para duas instâncias da API subindo juntas não disputarem os mesmos comandos de estrutura.
+CHAVE_TRAVA_INICIALIZACAO = 74_210_901
+
 
 def inicializar_banco() -> None:
+    if engine.dialect.name != "postgresql":
+        _executar_etapas()
+        return
+    # Duas instâncias/workers subindo juntos fazem a preparação um de cada vez. A trava é de transação
+    # (pg_advisory_xact_lock) numa conexão que fica com a transação aberta até o fim: assim funciona
+    # também pelo pooler do Neon em modo transação, e é liberada sozinha se o processo cair.
+    with engine.connect() as conexao_trava, conexao_trava.begin():
+        conexao_trava.execute(text("SELECT pg_advisory_xact_lock(:chave)"), {"chave": CHAVE_TRAVA_INICIALIZACAO})
+        _executar_etapas()
+
+
+def _executar_etapas() -> None:
     atualizar_credenciais_legadas()
     atualizar_ocorrencias_legadas()
     Base.metadata.create_all(bind=engine)
+    criar_indices_de_consulta()
+    preparar_sequencia_de_protocolo()
     ativar_limite_unifor_revisado()
     criar_usuarios_iniciais()
+
+
+# create_all não cria índices novos em tabelas que já existem; por isso ficam aqui, idempotentes.
+INDICES_DE_CONSULTA = [
+    # Listagem do admin (ordem e cursor) e listagens por autor / responsável / status.
+    "CREATE INDEX IF NOT EXISTS ix_ocorrencias_criado_em_id ON ocorrencias (criado_em DESC, id DESC)",
+    "CREATE INDEX IF NOT EXISTS ix_ocorrencias_autor_criado_em ON ocorrencias (autor_id, criado_em DESC, id DESC)",
+    "CREATE INDEX IF NOT EXISTS ix_ocorrencias_responsavel_criado_em ON ocorrencias (responsavel_id, criado_em DESC, id DESC)",
+    "CREATE INDEX IF NOT EXISTS ix_ocorrencias_status_criado_em ON ocorrencias (status, criado_em DESC, id DESC)",
+    # Notificações do usuário (ordem e cursor) e contagem / marcação das não lidas.
+    "CREATE INDEX IF NOT EXISTS ix_notificacoes_destinatario_criada_em ON notificacoes (destinatario_id, criada_em DESC, id DESC)",
+    "CREATE INDEX IF NOT EXISTS ix_notificacoes_destinatario_nao_lidas ON notificacoes (destinatario_id) WHERE lida = false",
+    # Busca de contas ativas por perfil (admins avisados a cada nova ocorrência, equipes etc.).
+    "CREATE INDEX IF NOT EXISTS ix_credentials_tipo_usuario_ativo ON credentials (tipo_usuario, ativo)",
+]
+
+def criar_indices_de_consulta() -> None:
+    with engine.begin() as conexao:
+        for comando in INDICES_DE_CONSULTA:
+            conexao.execute(text(comando))
+
+
+def preparar_sequencia_de_protocolo() -> None:
+    """Cria a SEQUENCE dos protocolos e a posiciona depois do maior número já usado.
+
+    Só avança a sequência (nunca volta), então rodar de novo a cada subida é seguro.
+    """
+    if engine.dialect.name != "postgresql":
+        return
+    with engine.begin() as conexao:
+        conexao.execute(text("CREATE SEQUENCE IF NOT EXISTS ocorrencias_protocolo_seq"))
+        conexao.execute(
+            text(
+                """
+                SELECT setval('ocorrencias_protocolo_seq', usados.maior)
+                FROM (
+                    SELECT MAX(CAST(SPLIT_PART(protocolo, '-', 2) AS BIGINT)) AS maior
+                    FROM ocorrencias
+                    WHERE SPLIT_PART(protocolo, '-', 2) ~ '^[0-9]{1,18}$'
+                ) AS usados
+                WHERE usados.maior IS NOT NULL
+                  AND usados.maior >= (
+                      SELECT CASE WHEN is_called THEN last_value + 1 ELSE last_value END
+                      FROM ocorrencias_protocolo_seq
+                  )
+                """
+            )
+        )
 
 
 def criar_usuarios_iniciais() -> None:

@@ -41,9 +41,6 @@ class UsuarioRepository:
         )
         return list(self.sessao.scalars(consulta))
 
-    def nomes_por_id(self) -> dict[UUID, str]:
-        return {usuario.id: usuario.nome for usuario in self.sessao.scalars(select(Usuario))}
-
     def adicionar(self, usuario: Usuario) -> Usuario:
         self.sessao.add(usuario)
         return usuario

@@ -1,6 +1,7 @@
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import func, select, tuple_, update
 from sqlalchemy.orm import Session
 
 from app.entities.notificacao import Notificacao
@@ -13,14 +14,37 @@ class NotificacaoRepository:
     def adicionar(self, notificacao: Notificacao) -> None:
         self.sessao.add(notificacao)
 
-    def listar_do_destinatario(self, destinatario_id: UUID) -> list[Notificacao]:
+    def listar_do_destinatario(
+        self,
+        destinatario_id: UUID,
+        antes_de: datetime | None = None,
+        antes_id: UUID | None = None,
+        limite: int = 50,
+    ) -> list[Notificacao]:
+        """Uma página das mais recentes primeiro, com paginação por cursor (criada_em, id)."""
         consulta = (
             select(Notificacao)
             .where(Notificacao.destinatario_id == destinatario_id)
-            .order_by(Notificacao.criada_em.desc())
+            .order_by(Notificacao.criada_em.desc(), Notificacao.id.desc())
+            .limit(limite)
         )
+        if antes_de is not None and antes_id is not None:
+            consulta = consulta.where(tuple_(Notificacao.criada_em, Notificacao.id) < tuple_(antes_de, antes_id))
         return list(self.sessao.scalars(consulta))
 
-    def listar_nao_lidas(self, destinatario_id: UUID) -> list[Notificacao]:
-        consulta = select(Notificacao).where(Notificacao.destinatario_id == destinatario_id, Notificacao.lida.is_(False))
-        return list(self.sessao.scalars(consulta))
+    def contar_nao_lidas(self, destinatario_id: UUID) -> int:
+        consulta = (
+            select(func.count())
+            .select_from(Notificacao)
+            .where(Notificacao.destinatario_id == destinatario_id, Notificacao.lida.is_(False))
+        )
+        return self.sessao.scalar(consulta) or 0
+
+    def marcar_todas_como_lidas(self, destinatario_id: UUID) -> None:
+        """Um único UPDATE em lote, sem carregar as notificações."""
+        self.sessao.execute(
+            update(Notificacao)
+            .where(Notificacao.destinatario_id == destinatario_id, Notificacao.lida.is_(False))
+            .values(lida=True)
+            .execution_options(synchronize_session=False)
+        )

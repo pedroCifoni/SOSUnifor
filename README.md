@@ -26,7 +26,7 @@ O Uni SOS reúne em um só lugar três formas de pedir ajuda dentro da UNIFOR:
 | 🔧 | **Manutenção** | Abertura de chamado com local, descrição e foto ou vídeo. |
 | 🛡️ | **Denúncia** | Registro de furto, assédio, vandalismo e outros, com opção de denúncia anônima. |
 
-O **administrador** faz a triagem de todas as ocorrências e encaminha cada uma para a **Equipe de Segurança**, que aceita e conclui o atendimento. Em cada etapa, quem abriu a ocorrência recebe uma notificação em tempo real e pode acompanhar o histórico completo.
+O **administrador** faz a triagem de todas as ocorrências e encaminha cada uma para a equipe responsável (**Segurança** ou **Técnico**), que aceita e conclui o atendimento. Em cada etapa, quem abriu a ocorrência recebe uma notificação em tempo real e pode acompanhar o histórico completo.
 
 ### Perfis
 
@@ -35,6 +35,7 @@ O **administrador** faz a triagem de todas as ocorrências e encaminha cada uma 
 | Usuário | Aciona SOS, abre chamados e denúncias e acompanha as próprias ocorrências |
 | Administrador | Faz a triagem e o encaminhamento, gerencia usuários e desenha as áreas do campus |
 | Segurança | Recebe as ocorrências encaminhadas, aceita e conclui o atendimento |
+| Técnico | Recebe os chamados de suporte técnico encaminhados, aceita e conclui o atendimento |
 
 Não existe cadastro público: as contas são criadas pelo administrador no painel.
 
@@ -52,9 +53,9 @@ Não existe cadastro público: as contas são criadas pelo administrador no pain
 |---|---|---|
 | Front-end | React 19, TypeScript, Vite, Tailwind CSS, React Router, MapLibre GL, Terra Draw | [Vercel](https://sos-unifor-front-end.vercel.app) |
 | API | Python 3.12, FastAPI, SQLAlchemy, Pydantic, PyJWT, Argon2 | [Render](https://sosunifor.onrender.com/docs) |
-| Banco | PostgreSQL 17 | Neon |
+| Banco | PostgreSQL 17 (serverless) | Neon |
 
-A API cria as tabelas e os usuários iniciais sozinha na primeira vez que sobe, então não é preciso rodar migração manual.
+A API cria as tabelas, os índices e os usuários iniciais sozinha na primeira vez que sobe, então não é preciso rodar migração manual.
 
 ## Estrutura do repositório
 
@@ -66,21 +67,23 @@ A API cria as tabelas e os usuários iniciais sozinha na primeira vez que sobe, 
 │   ├── pages/                        # Telas por perfil e funcionalidade
 │   ├── routes/                       # Rotas e proteção por perfil
 │   └── services/                     # Chamadas à API por recurso
-├── backend/services/auth-service/    # API FastAPI
+├── backend/                          # API FastAPI
 │   ├── app/
 │   │   ├── controllers/              # Rotas HTTP e WebSocket: recebem a requisição e chamam o service
 │   │   ├── services/                 # Regras de negócio e controle da transação
 │   │   ├── repositories/             # Consultas e gravações no banco
 │   │   ├── entities/                 # Tabelas (modelos SQLAlchemy)
 │   │   ├── dtos/                     # Formatos de entrada e saída da API (Pydantic)
-│   │   ├── core/                     # Configuração, banco, segurança/JWT, erros e WebSocket
+│   │   ├── core/                     # Configuração, banco, segurança/JWT, e-mail, erros e WebSocket
 │   │   └── main.py                   # Monta a aplicação
 │   ├── scripts/                      # Tarefas manuais (importar áreas do OSM, testar conexão)
-│   ├── testes/                       # Testes HTTP de ponta a ponta
-│   └── alembic/                      # Migrações
-├── docker-compose.yml                # PostgreSQL para desenvolvimento local
+│   ├── testes/                       # Testes automatizados
+│   │   └── carga/                    # Teste de carga com Locust (locustfile.py e popular_banco.py)
+│   ├── requirements.txt              # Dependências Python da API
+│   └── .env.example                  # Modelo de variáveis de ambiente da API
+├── docker-compose.yml                # PostgreSQL e Mailpit para desenvolvimento local
 ├── vercel.json                       # Rewrite da SPA na Vercel
-└── docs/                             # Documentação do projeto
+└── docs/                             # Documentação e diagramas do projeto
 ```
 
 ### Camadas do back-end
@@ -91,38 +94,42 @@ Requisição → Controller → Service → Repository → Banco
                DTOs      Entities + regras
 ```
 
-- **Controller:** só lida com HTTP. Valida a entrada pelo DTO, identifica o usuário e devolve o DTO de resposta.
-- **Service:** concentra as regras, como quem pode ver ou alterar cada ocorrência, a geração do protocolo, as notificações e a identificação do local do SOS. Lança erros de negócio (`core/excecoes.py`), que viram respostas HTTP.
+- **Controller:** só lida com HTTP e WebSocket. Valida a entrada pelo DTO, identifica o usuário e devolve o DTO de resposta.
+- **Service:** concentra as regras, como quem pode ver ou alterar cada ocorrência, a geração do protocolo, os envios de e-mail, as notificações e a identificação do local do SOS. Lança erros de negócio (`backend/app/core/excecoes.py`), que viram respostas HTTP.
 - **Repository:** é o único ponto que monta consultas SQLAlchemy. Não faz commit.
 
 ## Rodar localmente
 
 **Pré-requisitos:** Node.js 20 ou mais novo, Python 3.12 ou mais novo e Docker Desktop.
 
-**1. Banco de dados**
+**1. Banco de dados e e-mail local (PostgreSQL + Mailpit)**
 
 ```powershell
 Copy-Item .env.example .env
 docker compose up -d
 ```
 
+O `docker-compose.yml` sobe o PostgreSQL na porta `5433` e o **Mailpit** (caixa de e-mail falsa para desenvolvimento) com interface web em `http://localhost:8025` e servidor SMTP na porta `1025`.
+
 **2. API**, em `http://127.0.0.1:8000`
 
 ```powershell
-cd backend\services\auth-service
+cd backend
 Copy-Item .env.example .env
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload
 ```
 
-Para importar do OpenStreetMap os prédios da UNIFOR, ainda na pasta da API, rode:
+Para importar do OpenStreetMap os prédios da UNIFOR, ainda na pasta `backend`, rode:
 
 ```powershell
 .\.venv\Scripts\python.exe -m scripts.importar_areas_unifor_osm
 ```
 
 **3. Front-end**, em `http://localhost:5173`
+
+Na raiz do repositório:
 
 ```powershell
 npm install --legacy-peer-deps
@@ -131,19 +138,54 @@ npm run dev
 
 Para o front local usar a API local, defina `VITE_API_URL=http://127.0.0.1:8000` no `.env` da raiz.
 
-### Contas iniciais
+### Testar pelo celular na mesma rede
 
-A API cria estas contas quando elas ainda não existem. A senha inicial é `123456`; **troque-a em qualquer ambiente publicado.**
+O script `npm run dev` já roda o Vite com `--host 0.0.0.0`, então o front fica acessível na rede local pelo IP da sua máquina (por exemplo, `http://192.168.0.15:5173`). Para o celular alcançar também a API local, suba o Uvicorn com `--host 0.0.0.0` e aponte `VITE_API_URL` para `http://<IP-DA-MAQUINA>:8000` — em desenvolvimento, a API já aceita CORS vindo de IPs da rede local (`192.168.x.x` e `10.x.x.x`).
+
+> **GPS no celular:** a API de geolocalização do navegador só funciona em **HTTPS** ou `localhost`. Ao abrir pelo IP em HTTP na rede local, o GPS real fica bloqueado pelo navegador; deixe `VITE_SOS_USAR_GPS` desativada para usar o ponto fixo no Bloco C.
+
+### Contas iniciais de desenvolvimento
+
+A API cria estas contas quando elas ainda não existem. A senha inicial de todas é `123456`; **troque-a em qualquer ambiente publicado.**
 
 | Perfil | E-mail |
 |---|---|
 | Administrador | `admin@unifor.br` |
-| Segurança | `seguranca@unifor.br` |
 | Usuário | `eduardo.costa@unifor.br` |
+| Segurança | `seguranca@unifor.br` |
+| Técnico de Informática | `tecnico@unifor.br` |
+
+## E-mails
+
+A API envia e-mails via SMTP em três situações:
+
+- **Boas-vindas:** quando o administrador cria uma nova conta, o usuário recebe um e-mail com seu acesso e a senha inicial.
+- **Esqueci minha senha:** envia um link de redefinição de uso único válido por **30 minutos**.
+- **Aviso de senha alterada:** confirma para o usuário que a senha da conta foi modificada.
+
+Em desenvolvimento local, o `docker-compose.yml` sobe o **Mailpit** (`SMTP_HOST=localhost`, `SMTP_PORT=1025`). Tudo o que a API envia aparece em `http://localhost:8025`, sem enviar e-mails reais. Se `SMTP_HOST` ficar vazio em desenvolvimento, o conteúdo do e-mail é registrado apenas no log da API.
+
+### Configurar Gmail em produção (senha de app)
+
+O Gmail não aceita a senha normal da conta em conexões SMTP. Para usar uma conta Google:
+
+1. Ative a **verificação em duas etapas** na conta Google.
+2. Acesse [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) e gere uma **senha de app**.
+3. Configure as variáveis SMTP no servidor da API:
+
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_STARTTLS=true
+SMTP_SSL=false
+SMTP_USUARIO=seu-email@gmail.com
+SMTP_SENHA=xxxx xxxx xxxx xxxx
+SMTP_REMETENTE=Uni SOS <seu-email@gmail.com>
+```
 
 ## Variáveis de ambiente
 
-**Front-end** (`.env` na raiz, ou Environment Variables na Vercel)
+### Front-end (`.env` na raiz, ou Environment Variables na Vercel)
 
 | Variável | Descrição |
 |---|---|
@@ -153,27 +195,97 @@ A API cria estas contas quando elas ainda não existem. A senha inicial é `1234
 
 Variáveis `VITE_*` entram no código no momento do build e ficam públicas. Depois de alterá-las na Vercel, faça um novo deploy.
 
-**API** (`backend/services/auth-service/.env`, ou Environment no Render)
+### API (`backend/.env`, ou Environment no Render)
+
+Veja `backend/.env.example` para os valores padrão de desenvolvimento.
+
+**Aplicação e autenticação**
 
 | Variável | Descrição |
 |---|---|
 | `AMBIENTE` | `desenvolvimento` ou `producao` |
 | `DATABASE_URL` | `postgresql+psycopg://usuario:senha@host:5432/banco` |
 | `JWT_SECRET` | Chave de assinatura dos tokens, com pelo menos 32 caracteres |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | Validade do token. O padrão é `60`. |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | Validade do token em minutos. Padrão: `60`. |
 | `CORS_ORIGINS` | Domínios do front separados por vírgula, sem caminho e sem barra no final |
+| `FRONTEND_URL` | Endereço público do front-end, usado para montar os links enviados por e-mail |
 
-Com `AMBIENTE=producao`, a API se recusa a iniciar se a `JWT_SECRET` for fraca, se a senha do banco for a de desenvolvimento ou se o CORS apontar para `localhost`.
+**Banco de dados e escalabilidade**
+
+| Variável | Descrição |
+|---|---|
+| `DB_POOL_SIZE` | Conexões permanentes no pool por processo/worker da API. Padrão: `10`. |
+| `DB_MAX_OVERFLOW` | Conexões extras permitidas acima do pool em picos. Padrão: `20`. |
+| `DB_POOL_TIMEOUT` | Segundos aguardando uma conexão livre do pool antes de responder erro. Padrão: `10`. |
+| `DB_POOL_RECYCLE` | Segundos até reciclar uma conexão (importante no Neon, que encerra conexões ociosas). Padrão: `300`. |
+| `DB_PREPARED_STATEMENTS` | Padrão: `true`. Defina como `false` se o pooler em modo transação (PgBouncer/Neon `-pooler`) reclamar de prepared statements. |
+| `TEMPO_REAL_DISTRIBUIDO` | Padrão: `false`. Com `true`, distribui notificações WebSocket entre várias instâncias/workers via Postgres `LISTEN`/`NOTIFY`. |
+| `DATABASE_URL_DIRETA` | URL do mesmo banco **sem** `-pooler`, usada apenas pelo ouvinte de tempo real quando `TEMPO_REAL_DISTRIBUIDO=true` (se vazio, usa `DATABASE_URL`). |
+
+**E-mail (SMTP)**
+
+| Variável | Descrição |
+|---|---|
+| `SMTP_HOST` | Servidor SMTP (em dev: `localhost` para o Mailpit; em produção: ex. `smtp.gmail.com`). Sem ela, nada é enviado. |
+| `SMTP_PORT` | Porta SMTP (`1025` no Mailpit; `587` com STARTTLS). |
+| `SMTP_USUARIO` | Usuário de autenticação SMTP (vazio no Mailpit). |
+| `SMTP_SENHA` | Senha ou senha de app SMTP (vazio no Mailpit). |
+| `SMTP_REMETENTE` | Remetente exibido nos e-mails (ex.: `Uni SOS <nao-responda@unifor.br>`). |
+| `SMTP_STARTTLS` | `true` para negociar TLS na porta 587 (`false` no Mailpit). |
+| `SMTP_SSL` | `true` para SMTP sobre SSL direto (porta 465). Padrão: `false`. |
 
 ## Deploy
 
 | Serviço | Configuração |
 |---|---|
-| **Neon** | Use a connection string *sem* connection pooling e troque o prefixo por `postgresql+psycopg://` |
-| **Render** | Web Service · Root Directory `backend/services/auth-service` · Build `pip install -r requirements.txt` · Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT` · `PYTHON_VERSION=3.12.7` |
-| **Vercel** | Framework Vite na raiz do repositório · `VITE_API_URL` apontando para o Render |
+| **Vercel** | Front-end (Vite) na raiz do repositório · `VITE_API_URL` apontando para a API no Render |
+| **Render** | Web Service · Root Directory `backend` · Build `pip install -r requirements.txt` · Start `uvicorn app.main:app --host 0.0.0.0 --port $PORT` · `PYTHON_VERSION=3.12.7` |
+| **Neon** | PostgreSQL serverless · `DATABASE_URL` usando o host **com** `-pooler` (com prefixo `postgresql+psycopg://`) |
 
 Um push na `main` atualiza o front e a API.
+
+### Detalhes do Neon e tempo real distribuído
+
+- Em produção no Neon, `DATABASE_URL` deve apontar para o endpoint **com** `-pooler` (ex.: `ep-xxx-pooler.sa-east-1.aws.neon.tech`), usado pelas requisições normais da API.
+- Se `TEMPO_REAL_DISTRIBUIDO=true` (necessário apenas quando há mais de uma instância/worker da API), configure também `DATABASE_URL_DIRETA` apontando para o mesmo banco pelo endpoint **sem** `-pooler` (ex.: `ep-xxx.sa-east-1.aws.neon.tech`), pois `LISTEN`/`NOTIFY` do PostgreSQL não funciona através do pooler. Vale notar que manter esse ouvinte ligado conserva uma conexão aberta por instância e impede o Neon de suspender o banco (*scale to zero*) enquanto a API estiver ativa.
+
+### Variáveis obrigatórias em produção
+
+Com `AMBIENTE=producao`, a API valida a configuração na subida (`validar_configuracao_de_producao` em `backend/app/core/config.py`) e se recusa a iniciar se algo inseguro for detectado:
+
+- `AMBIENTE=producao`
+- `JWT_SECRET` — forte e exclusiva, com pelo menos 32 caracteres e sem a palavra `desenvolvimento`
+- `DATABASE_URL` — credencial exclusiva (não pode usar a senha local `uni12345`)
+- `CORS_ORIGINS` — apenas domínios HTTPS da aplicação (sem `http://localhost` ou `http://127.*`)
+- `FRONTEND_URL` — URL pública do front na Vercel, para que os links nos e-mails apontem para o endereço correto
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USUARIO`, `SMTP_SENHA`, `SMTP_REMETENTE`, `SMTP_STARTTLS` / `SMTP_SSL` — necessárias para envio de boas-vindas e redefinição de senha (em produção, sem `SMTP_HOST` o conteúdo do e-mail nunca vai para o log)
+
+## Teste de carga
+
+O roteiro de carga em `backend/testes/carga/locustfile.py` usa [Locust](https://locust.io/) para simular vários usuários consultando notificações, ocorrências, áreas do campus, identificação de local e login.
+
+Instale o Locust no ambiente virtual do back-end:
+
+```powershell
+cd backend
+.\.venv\Scripts\python.exe -m pip install locust
+```
+
+Com a API rodando localmente (ex.: `http://127.0.0.1:8000`), execute pelo painel web (`http://localhost:8089`):
+
+```powershell
+.\.venv\Scripts\locust -f testes\carga\locustfile.py --host http://127.0.0.1:8000
+```
+
+Ou em modo sem interface (`--headless`):
+
+```powershell
+.\.venv\Scripts\locust -f testes\carga\locustfile.py --host http://127.0.0.1:8000 --headless -u 20 -r 5 -t 30s
+```
+
+Opcionalmente, `CARGA_EMAIL` e `CARGA_SENHA` definem a conta usada pelos usuários simulados (padrão: `admin@unifor.br` / `123456`), e `backend/testes/carga/popular_banco.py` popula um banco local dedicado chamado `unisos_carga` com volume realista de dados.
+
+> **Atenção:** rode testes de carga **apenas contra o ambiente local** — nunca contra a API de produção. O roteiro propositalmente **não chama rotas que enviam e-mail** (nem cria ocorrências), para evitar envios reais de SMTP e não poluir o banco.
 
 ## Mapa do campus
 

@@ -46,6 +46,27 @@ export interface NovaOcorrencia {
   precisaoMetros?: number
 }
 
+/** Filtros e cursor (keyset) aceitos por GET /ocorrencias. */
+export interface FiltrosOcorrencias {
+  limite?: number
+  /** criadoEm do último item da página anterior (usar junto com antesId). */
+  antesDe?: string
+  /** id do último item da página anterior (usar junto com antesDe). */
+  antesId?: string
+  status?: StatusOcorrencia
+  tipo?: TipoOcorrencia
+}
+
+/** Resposta de GET /ocorrencias/resumo (contagens feitas no banco). */
+export interface ResumoOcorrencias {
+  total: number
+  porStatus: Record<StatusOcorrencia, number>
+  porTipo: Record<TipoOcorrencia, number>
+}
+
+/** Status considerados "em aberto" (ainda exigem ação). */
+export const STATUS_ABERTOS: StatusOcorrencia[] = ['pendente', 'aguardando_aceite', 'em_atendimento']
+
 export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
   pendente: 'Pendente',
   aguardando_aceite: 'Aguardando aceite',
@@ -56,7 +77,7 @@ export const STATUS_LABEL: Record<StatusOcorrencia, string> = {
 
 export const ENCAMINHAR_LABEL: Record<TipoOcorrencia, string> = {
   sos: 'Encaminhar Patrulha',
-  manutencao: 'Encaminhar à Segurança',
+  manutencao: 'Encaminhar ao Técnico',
   denuncia: 'Encaminhar para Análise',
 }
 

@@ -1,28 +1,91 @@
+import hashlib
+import secrets
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
-from app.core.excecoes import AcessoNegadoErro, NaoAutenticadoErro
-from app.core.seguranca import conferir_senha, criar_token, ler_id_do_token
-from app.dtos.auth_dto import LoginEntrada, TokenResposta
+from app.core.config import configuracoes
+from app.core.excecoes import AcessoNegadoErro, NaoAutenticadoErro, RegraDeNegocioErro
+from app.core.seguranca import conferir_senha, criar_token, gerar_hash_senha, ler_id_do_token
+from app.dtos.auth_dto import EsqueciSenhaEntrada, LoginEntrada, MensagemResposta, RedefinirSenhaEntrada, TokenResposta
+from app.entities.token_redefinicao_senha import TokenRedefinicaoSenha
 from app.entities.usuario import Usuario
+from app.repositories.token_redefinicao_senha_repository import TokenRedefinicaoSenhaRepository
 from app.repositories.usuario_repository import UsuarioRepository
+from app.services.email_service import EmailService
 
 
 # Intervalo mínimo entre duas gravações de `ultimo_acesso`, para não escrever no banco a cada requisição.
 INTERVALO_REGISTRO_ACESSO = timedelta(seconds=20)
 
+# Limite de pedidos de "esqueci minha senha" por conta, para impedir que alguém encha a caixa de e-mail de outra pessoa.
+LIMITE_PEDIDOS_REDEFINICAO = 3
+JANELA_PEDIDOS_REDEFINICAO = timedelta(hours=1)
+
+# Mesma resposta exista ou não a conta: assim a tela não revela quais e-mails estão cadastrados.
+MENSAGEM_PEDIDO_REDEFINICAO = (
+    "Se o e-mail estiver cadastrado, você receberá em instantes um link para criar uma nova senha."
+)
+MENSAGEM_LINK_INVALIDO = "Este link de redefinição é inválido ou expirou. Peça um novo na tela de login."
+
+
+def _hash_do_token(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()
+
 
 class AuthService:
-    def __init__(self, sessao: Session) -> None:
+    def __init__(self, sessao: Session, emails: EmailService | None = None) -> None:
         self.sessao = sessao
         self.usuarios = UsuarioRepository(sessao)
+        self.tokens_redefinicao = TokenRedefinicaoSenhaRepository(sessao)
+        self.emails = emails or EmailService()
 
     def entrar(self, dados: LoginEntrada) -> TokenResposta:
         usuario = self.usuarios.buscar_por_email(dados.email)
         if usuario is None or not usuario.ativo or not conferir_senha(dados.senha, usuario.senha_hash):
             raise NaoAutenticadoErro("E-mail ou senha inválidos.")
         return TokenResposta(token=criar_token(usuario))
+
+    # ---------- esqueci minha senha ----------
+    def solicitar_redefinicao_senha(self, dados: EsqueciSenhaEntrada) -> MensagemResposta:
+        """Gera um token de uso único e envia o link por e-mail. A resposta é sempre a mesma."""
+        resposta = MensagemResposta(mensagem=MENSAGEM_PEDIDO_REDEFINICAO)
+        usuario = self.usuarios.buscar_por_email(dados.email)
+        if usuario is None or not usuario.ativo:
+            return resposta
+
+        agora = datetime.now(timezone.utc)
+        if self.tokens_redefinicao.contar_pedidos_desde(usuario.id, agora - JANELA_PEDIDOS_REDEFINICAO) >= LIMITE_PEDIDOS_REDEFINICAO:
+            return resposta
+
+        token = secrets.token_urlsafe(32)
+        self.tokens_redefinicao.invalidar_pendentes(usuario.id, agora)
+        self.tokens_redefinicao.adicionar(
+            TokenRedefinicaoSenha(
+                usuario_id=usuario.id,
+                token_hash=_hash_do_token(token),
+                criado_em=agora,
+                expira_em=agora + timedelta(minutes=configuracoes.redefinicao_senha_expira_minutos),
+            )
+        )
+        self.sessao.commit()
+        self.emails.enviar_redefinicao_senha(usuario.nome, usuario.email, token)
+        return resposta
+
+    def redefinir_senha(self, dados: RedefinirSenhaEntrada) -> MensagemResposta:
+        agora = datetime.now(timezone.utc)
+        registro = self.tokens_redefinicao.buscar_por_hash_para_uso(_hash_do_token(dados.token))
+        if registro is None or registro.usado_em is not None or registro.expira_em <= agora:
+            raise RegraDeNegocioErro(MENSAGEM_LINK_INVALIDO)
+        usuario = self.usuarios.buscar_por_id(registro.usuario_id)
+        if usuario is None or not usuario.ativo:
+            raise RegraDeNegocioErro(MENSAGEM_LINK_INVALIDO)
+
+        usuario.senha_hash = gerar_hash_senha(dados.nova_senha)
+        self.tokens_redefinicao.invalidar_pendentes(usuario.id, agora)
+        self.sessao.commit()
+        self.emails.enviar_aviso_senha_alterada(usuario.nome, usuario.email)
+        return MensagemResposta(mensagem="Senha alterada. Você já pode entrar com a nova senha.")
 
     def usuario_do_token(self, token: str | None) -> Usuario:
         """Identifica o usuário do token e registra o último acesso (usado para saber quem está online)."""

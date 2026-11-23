@@ -1,4 +1,7 @@
+from uuid import UUID
+
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
+from starlette.concurrency import run_in_threadpool
 
 from app.core.database import FabricaSessao
 from app.core.excecoes import NaoAutenticadoErro
@@ -8,6 +11,13 @@ from app.repositories.usuario_repository import UsuarioRepository
 
 
 router = APIRouter(tags=["Tempo real"])
+
+
+def _usuario_ativo(usuario_id: UUID) -> bool:
+    """Consulta síncrona ao banco; roda em thread para não travar o event loop."""
+    with FabricaSessao() as sessao:
+        usuario = UsuarioRepository(sessao).buscar_por_id(usuario_id)
+        return usuario is not None and usuario.ativo
 
 
 @router.websocket("/ws/notificacoes")
@@ -22,11 +32,9 @@ async def acompanhar_notificacoes(websocket: WebSocket) -> None:
     except NaoAutenticadoErro:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
-    with FabricaSessao() as sessao:
-        usuario = UsuarioRepository(sessao).buscar_por_id(usuario_id)
-        if usuario is None or not usuario.ativo:
-            await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-            return
+    if not await run_in_threadpool(_usuario_ativo, usuario_id):
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
 
     await gerenciador_notificacoes.conectar(usuario_id, websocket)
     try:

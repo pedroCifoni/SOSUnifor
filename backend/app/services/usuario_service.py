@@ -14,12 +14,14 @@ from app.dtos.usuario_dto import (
 )
 from app.entities.usuario import Usuario
 from app.repositories.usuario_repository import UsuarioRepository
+from app.services.email_service import EmailService
 
 
 class UsuarioService:
-    def __init__(self, sessao: Session) -> None:
+    def __init__(self, sessao: Session, emails: EmailService | None = None) -> None:
         self.sessao = sessao
         self.usuarios = UsuarioRepository(sessao)
+        self.emails = emails or EmailService()
 
     # ---------- consultas ----------
     def listar_ativos(self) -> list[UsuarioResposta]:
@@ -46,6 +48,7 @@ class UsuarioService:
         usuario = self._novo_usuario(dados)
         self.sessao.commit()
         self.sessao.refresh(usuario)
+        self._enviar_acesso(usuario, dados.senha)
         return UsuarioResposta.de_entidade(usuario)
 
     def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioResposta:
@@ -64,9 +67,15 @@ class UsuarioService:
 
     def salvar_em_lote(self, dados: UsuarioLoteEntrada, administrador: Usuario) -> UsuarioLoteResposta:
         """Aplica o rascunho do painel administrativo em uma única transação: tudo ou nada."""
+        # O banco só enxerga as contas novas depois do flush; por isso e-mails repetidos dentro
+        # do próprio lote são barrados aqui (antes viravam IntegrityError e HTTP 500).
+        emails_do_lote = [c.email.lower().strip() for c in dados.criacoes] + [
+            a.email.lower().strip() for a in dados.atualizacoes if a.email
+        ]
+        if len(emails_do_lote) != len(set(emails_do_lote)):
+            raise ConflitoErro("Há e-mails repetidos entre os usuários salvos.")
         try:
-            for criacao in dados.criacoes:
-                self._novo_usuario(criacao)
+            criados = [(self._novo_usuario(criacao), criacao.senha) for criacao in dados.criacoes]
             self.sessao.flush()
             for atualizacao in dados.atualizacoes:
                 usuario = self._buscar_ativo(UUID(atualizacao.id))
@@ -80,11 +89,17 @@ class UsuarioService:
         except Exception:
             self.sessao.rollback()
             raise
+        # Só depois do commit: ninguém recebe a senha de uma conta que acabou não sendo criada.
+        for usuario, senha in criados:
+            self._enviar_acesso(usuario, senha)
         return UsuarioLoteResposta(
             criadas=len(dados.criacoes), atualizadas=len(dados.atualizacoes), excluidas=len(dados.exclusoes)
         )
 
     # ---------- regras ----------
+    def _enviar_acesso(self, usuario: Usuario, senha: str) -> None:
+        self.emails.enviar_boas_vindas(usuario.nome, usuario.email, senha)
+
     def _novo_usuario(self, dados: UsuarioEntrada) -> Usuario:
         return self.usuarios.adicionar(
             Usuario(

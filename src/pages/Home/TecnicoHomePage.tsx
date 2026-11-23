@@ -1,11 +1,14 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { Wrench } from 'lucide-react'
 import { OcorrenciaModal } from '@/components/ocorrencias/OcorrenciaModal'
+import { CarregarMais } from '@/components/ui/CarregarMais'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
+import { useOcorrenciasPaginadas } from '@/hooks/useOcorrenciasPaginadas'
+import { useResumoOcorrencias } from '@/hooks/useResumoOcorrencias'
 import { useToast } from '@/hooks/useToast'
-import type { Ocorrencia } from '@/models/ocorrencia'
+import { STATUS_ABERTOS, type Ocorrencia } from '@/models/ocorrencia'
 import { ocorrenciaService } from '@/services/ocorrenciaService'
 import { tempoRelativo } from '@/utils/format'
 
@@ -13,32 +16,36 @@ export function TecnicoHomePage() {
   const { usuario } = useAuth()
   const toast = useToast()
   const { revisao } = useNotificacoes()
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[] | null>(null)
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
+  const habilitado = !!usuario
+  const { resumo, recarregar: recarregarResumo } = useResumoOcorrencias(revisao, habilitado)
+  const abertosPaginados = useOcorrenciasPaginadas({ status: STATUS_ABERTOS, habilitado, revisao })
+  // "Concluídos recentemente" mostra só os 5 mais recentes.
+  const concluidosRecentes = useOcorrenciasPaginadas({ status: 'concluido', limite: 5, habilitado, revisao })
 
-  const carregarChamados = useCallback(async () => {
-    if (!usuario) return
-    setOcorrencias(await ocorrenciaService.listarPorResponsavel(usuario.id))
-  }, [usuario])
-
-  useEffect(() => {
-    void carregarChamados()
-  }, [carregarChamados, revisao])
+  const { recarregar: recarregarAbertos } = abertosPaginados
+  const { recarregar: recarregarConcluidos } = concluidosRecentes
+  const carregarChamados = useCallback(() => {
+    void recarregarAbertos()
+    void recarregarConcluidos()
+    void recarregarResumo()
+  }, [recarregarAbertos, recarregarConcluidos, recarregarResumo])
 
   async function atualizarAtendimento(id: string, status: 'em_atendimento' | 'concluido') {
     try {
       await ocorrenciaService.atualizarStatus(id, status)
       toast.sucesso(status === 'em_atendimento' ? 'Suporte técnico aceito.' : 'Suporte técnico concluído.')
       setSelecionada(null)
-      void carregarChamados()
+      carregarChamados()
     } catch {
       toast.erro('Não foi possível concluir o suporte.')
     }
   }
 
-  const lista = ocorrencias ?? []
-  const abertos = lista.filter((ocorrencia) => ocorrencia.status !== 'concluido')
-  const concluidos = lista.filter((ocorrencia) => ocorrencia.status === 'concluido')
+  const abertos = abertosPaginados.itens ?? []
+  const concluidos = concluidosRecentes.itens ?? []
+  const totalAbertos = resumo ? STATUS_ABERTOS.reduce((soma, s) => soma + resumo.porStatus[s], 0) : undefined
+  const totalConcluidos = resumo?.porStatus.concluido
 
   return (
     <div className="space-y-6">
@@ -53,17 +60,17 @@ export function TecnicoHomePage() {
       <section className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border-2 border-brand-500 bg-white p-4 text-brand-500">
           <p className="text-[10px] font-bold tracking-wide">EM ABERTO</p>
-          <p className="text-3xl font-bold">{String(abertos.length).padStart(2, '0')}</p>
+          <p className="text-3xl font-bold">{totalAbertos === undefined ? '--' : String(totalAbertos).padStart(2, '0')}</p>
         </div>
         <div className="rounded-2xl border-2 border-emerald-500 bg-white p-4 text-emerald-700">
           <p className="text-[10px] font-bold tracking-wide">CONCLUÍDOS</p>
-          <p className="text-3xl font-bold">{String(concluidos.length).padStart(2, '0')}</p>
+          <p className="text-3xl font-bold">{totalConcluidos === undefined ? '--' : String(totalConcluidos).padStart(2, '0')}</p>
         </div>
       </section>
 
       <section>
         <h3 className="mb-3 text-sm font-bold text-brand-900">Pedidos para atendimento</h3>
-        {ocorrencias === null ? (
+        {abertosPaginados.itens === null ? (
           <p className="py-8 text-center text-sm text-muted">Carregando pedidos…</p>
         ) : (
           <ul className="grid gap-3 md:grid-cols-2">
@@ -86,6 +93,11 @@ export function TecnicoHomePage() {
             {abertos.length === 0 && <li className="text-sm text-muted">Nenhum pedido técnico encaminhado no momento.</li>}
           </ul>
         )}
+        <CarregarMais
+          visivel={abertosPaginados.temMais}
+          carregando={abertosPaginados.carregandoMais}
+          onClick={() => void abertosPaginados.carregarMais()}
+        />
       </section>
 
       {selecionada && (
@@ -106,7 +118,7 @@ export function TecnicoHomePage() {
         <section>
           <h3 className="mb-3 text-sm font-bold text-brand-900">Concluídos recentemente</h3>
           <ul className="space-y-2">
-            {concluidos.slice(0, 5).map((ocorrencia) => (
+            {concluidos.map((ocorrencia) => (
               <li key={ocorrencia.id}>
                 <button onClick={() => setSelecionada(ocorrencia)} className="flex w-full items-center justify-between rounded-xl border border-line bg-white p-3 text-left hover:border-brand-500">
                   <span><span className="block text-sm font-semibold text-brand-900">{ocorrencia.titulo}</span><span className="block text-xs text-muted">{ocorrencia.local}</span></span>

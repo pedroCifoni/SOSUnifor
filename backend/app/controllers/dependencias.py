@@ -7,12 +7,15 @@ from fastapi import BackgroundTasks, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
+from app.core.config import configuracoes
 from app.core.database import obter_banco
 from app.core.tempo_real import gerenciador_notificacoes
+from app.core.tempo_real_distribuido import publicar_aviso
 from app.entities.usuario import Usuario
 from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
 from app.services.auth_service import AuthService
+from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
 from app.services.usuario_service import UsuarioService
@@ -24,20 +27,36 @@ _esquema_bearer = HTTPBearer(auto_error=False)
 
 # ---------- services ----------
 def _avisador(tarefas: BackgroundTasks):
-    """Agenda o aviso por WebSocket para depois que a resposta for enviada."""
+    """Agenda o aviso por WebSocket para depois que a resposta for enviada.
+
+    Com TEMPO_REAL_DISTRIBUIDO, o aviso vai só para o canal do banco: o ouvinte de cada
+    processo (inclusive este) entrega às suas conexões, sem aviso duplicado.
+    """
 
     def avisar(destinatarios: list[UUID]) -> None:
-        tarefas.add_task(gerenciador_notificacoes.avisar, destinatarios)
+        if configuracoes.tempo_real_distribuido:
+            tarefas.add_task(publicar_aviso, destinatarios)
+        else:
+            tarefas.add_task(gerenciador_notificacoes.avisar, destinatarios)
 
     return avisar
+
+
+def _emails(tarefas: BackgroundTasks) -> EmailService:
+    """E-mails são enviados depois que a resposta sai, para a requisição não esperar o servidor SMTP."""
+    return EmailService(agendar=tarefas.add_task)
 
 
 def auth_service(banco: Banco) -> AuthService:
     return AuthService(banco)
 
 
-def usuario_service(banco: Banco) -> UsuarioService:
-    return UsuarioService(banco)
+def auth_service_com_email(banco: Banco, tarefas: BackgroundTasks) -> AuthService:
+    return AuthService(banco, emails=_emails(tarefas))
+
+
+def usuario_service(banco: Banco, tarefas: BackgroundTasks) -> UsuarioService:
+    return UsuarioService(banco, emails=_emails(tarefas))
 
 
 def area_campus_service(banco: Banco) -> AreaCampusService:

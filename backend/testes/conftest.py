@@ -1,0 +1,96 @@
+"""Infraestrutura isolada da suíte HTTP.
+
+As variáveis abaixo são definidas antes de qualquer import de ``app`` para que a
+configuração do arquivo .env local nunca seja usada pelos testes.
+"""
+
+import os
+
+os.environ["DATABASE_URL"] = "postgresql+psycopg://unisos:uni12345@localhost:5433/unisos_testes"
+os.environ["SMTP_HOST"] = ""
+os.environ["TEMPO_REAL_DISTRIBUIDO"] = "false"
+os.environ["AMBIENTE"] = "teste"
+
+from collections.abc import Callable
+
+import pytest
+from fastapi.testclient import TestClient
+from sqlalchemy import text
+
+from app.core.database import engine
+from app.main import app
+
+
+TABELAS_DE_TESTE = "notificacoes, eventos_ocorrencia, tokens_redefinicao_senha, ocorrencias, areas_campus, credentials"
+
+
+@pytest.fixture
+def emails(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, str | None]]:
+    """Captura e-mails sem conectar ao SMTP configurado fora da suíte."""
+    mensagens: list[dict[str, str | None]] = []
+
+    def capturar(destinatario: str, assunto: str, texto: str, html: str | None = None) -> None:
+        mensagens.append({"destinatario": destinatario, "assunto": assunto, "texto": texto, "html": html})
+
+    monkeypatch.setattr("app.services.email_service.enviar_email", capturar)
+    monkeypatch.setattr("app.core.email.enviar_email", capturar)
+    return mensagens
+
+
+@pytest.fixture(scope="session", autouse=True)
+def preparar_banco_de_testes() -> None:
+    """Executa uma vez o lifespan para criar a estrutura antes do primeiro TRUNCATE."""
+    with TestClient(app):
+        pass
+
+
+@pytest.fixture
+def client(preparar_banco_de_testes: None, emails: list[dict[str, str | None]]) -> TestClient:
+    """Um banco vazio por teste; o lifespan recria as contas iniciais."""
+    with engine.begin() as conexao:
+        conexao.execute(text(f"TRUNCATE TABLE {TABELAS_DE_TESTE} RESTART IDENTITY CASCADE"))
+    with TestClient(app, raise_server_exceptions=False) as cliente:
+        yield cliente
+
+
+@pytest.fixture
+def criar_usuario() -> Callable[..., object]:
+    """Cria uma conta de apoio sem passar pelo endpoint nem gerar e-mail."""
+    from app.core.database import FabricaSessao
+    from app.core.seguranca import gerar_hash_senha
+    from app.entities.usuario import Usuario
+
+    def criar(
+        email: str,
+        *,
+        perfil: str = "usuario",
+        senha: str = "senha123",
+        ativo: bool = True,
+        nome: str = "Pessoa de Teste",
+    ) -> Usuario:
+        with FabricaSessao() as sessao:
+            usuario = Usuario(
+                nome=nome,
+                email=email,
+                senha_hash=gerar_hash_senha(senha),
+                tipo_usuario=perfil,
+                ativo=ativo,
+            )
+            sessao.add(usuario)
+            sessao.commit()
+            sessao.refresh(usuario)
+            sessao.expunge(usuario)
+            return usuario
+
+    return criar
+
+
+def token_de(client: TestClient, email: str, senha: str = "123456") -> str:
+    resposta = client.post("/auth/login", json={"email": email, "senha": senha})
+    assert resposta.status_code == 200, resposta.text
+    return resposta.json()["token"]
+
+
+@pytest.fixture
+def token_admin(client: TestClient) -> str:
+    return token_de(client, "admin@unifor.br")

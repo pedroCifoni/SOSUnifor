@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useState } from 'react'
 import { OcorrenciaModal } from '@/components/ocorrencias/OcorrenciaModal'
+import { CarregarMais } from '@/components/ui/CarregarMais'
 import { StatusBadge } from '@/components/ui/StatusBadge'
 import { useAuth } from '@/hooks/useAuth'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
+import { useOcorrenciasPaginadas } from '@/hooks/useOcorrenciasPaginadas'
+import { useResumoOcorrencias } from '@/hooks/useResumoOcorrencias'
 import { useToast } from '@/hooks/useToast'
-import { TIPO_LABEL, type Ocorrencia } from '@/models/ocorrencia'
+import { STATUS_ABERTOS, TIPO_LABEL, type Ocorrencia } from '@/models/ocorrencia'
 import { ocorrenciaService } from '@/services/ocorrenciaService'
 import { tempoRelativo } from '@/utils/format'
 
@@ -12,33 +15,35 @@ export function SegurancaHomePage() {
   const { usuario } = useAuth()
   const toast = useToast()
   const { revisao } = useNotificacoes()
-  const [ocorrencias, setOcorrencias] = useState<Ocorrencia[] | null>(null)
   const [selecionada, setSelecionada] = useState<Ocorrencia | null>(null)
+  const habilitado = !!usuario
+  const { resumo, recarregar: recarregarResumo } = useResumoOcorrencias(revisao, habilitado)
+  const abertas = useOcorrenciasPaginadas({ status: STATUS_ABERTOS, habilitado, revisao })
+  const concluidasPaginadas = useOcorrenciasPaginadas({ status: 'concluido', limite: 20, habilitado, revisao })
 
-  const carregar = useCallback(async () => {
-    if (usuario) setOcorrencias(await ocorrenciaService.listarPorResponsavel(usuario.id))
-  }, [usuario])
-
-  useEffect(() => {
-    void carregar()
-  }, [carregar, revisao])
+  const { recarregar: recarregarAbertas } = abertas
+  const { recarregar: recarregarConcluidas } = concluidasPaginadas
+  const carregar = useCallback(() => {
+    void recarregarAbertas()
+    void recarregarConcluidas()
+    void recarregarResumo()
+  }, [recarregarAbertas, recarregarConcluidas, recarregarResumo])
 
   async function atualizarAtendimento(id: string, status: 'em_atendimento' | 'concluido') {
     try {
       await ocorrenciaService.atualizarStatus(id, status)
       toast.sucesso(status === 'em_atendimento' ? 'Atendimento aceito.' : 'Atendimento concluído.')
       setSelecionada(null)
-      void carregar()
+      carregar()
     } catch {
       toast.erro('Não foi possível concluir o atendimento.')
     }
   }
 
-  const lista = ocorrencias ?? []
-  const aAtender = lista
-    .filter((o) => o.status !== 'concluido')
-    .sort((a, b) => Number(b.tipo === 'sos') - Number(a.tipo === 'sos'))
-  const concluidas = lista.filter((o) => o.status === 'concluido')
+  const aAtender = [...(abertas.itens ?? [])].sort((a, b) => Number(b.tipo === 'sos') - Number(a.tipo === 'sos'))
+  const concluidas = concluidasPaginadas.itens ?? []
+  const totalAAtender = resumo ? STATUS_ABERTOS.reduce((soma, s) => soma + resumo.porStatus[s], 0) : undefined
+  const totalConcluidas = resumo?.porStatus.concluido
 
   return (
     <div className="space-y-6">
@@ -50,17 +55,17 @@ export function SegurancaHomePage() {
       <section className="grid grid-cols-2 gap-3">
         <div className="rounded-2xl border-2 border-sos-500 bg-white p-4 text-sos-500">
           <p className="text-[10px] font-bold tracking-wide">A ATENDER</p>
-          <p className="text-3xl font-bold">{String(aAtender.length).padStart(2, '0')}</p>
+          <p className="text-3xl font-bold">{totalAAtender === undefined ? '--' : String(totalAAtender).padStart(2, '0')}</p>
         </div>
         <div className="rounded-2xl border-2 border-brand-900 bg-white p-4 text-brand-900">
           <p className="text-[10px] font-bold tracking-wide">CONCLUÍDAS</p>
-          <p className="text-3xl font-bold">{String(concluidas.length).padStart(2, '0')}</p>
+          <p className="text-3xl font-bold">{totalConcluidas === undefined ? '--' : String(totalConcluidas).padStart(2, '0')}</p>
         </div>
       </section>
 
       <section>
         <h3 className="mb-3 text-sm font-bold text-brand-900">Encaminhadas para você</h3>
-        {ocorrencias === null ? (
+        {abertas.itens === null ? (
           <p className="py-8 text-center text-sm text-muted">Carregando ocorrências…</p>
         ) : (
           <ul className="grid gap-3 md:grid-cols-2">
@@ -100,6 +105,7 @@ export function SegurancaHomePage() {
             )}
           </ul>
         )}
+        <CarregarMais visivel={abertas.temMais} carregando={abertas.carregandoMais} onClick={() => void abertas.carregarMais()} />
       </section>
 
       {concluidas.length > 0 && (
@@ -123,6 +129,11 @@ export function SegurancaHomePage() {
               </li>
             ))}
           </ul>
+          <CarregarMais
+            visivel={concluidasPaginadas.temMais}
+            carregando={concluidasPaginadas.carregandoMais}
+            onClick={() => void concluidasPaginadas.carregarMais()}
+          />
         </section>
       )}
 

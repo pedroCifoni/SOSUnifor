@@ -3,7 +3,8 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
-from app.dtos.notificacao_dto import NotificacaoResposta
+from app.dtos.notificacao_dto import NotificacaoResposta, ResumoNotificacoesResposta
+from app.dtos.ocorrencia_dto import CursorPagina
 from app.entities.notificacao import Notificacao
 from app.entities.usuario import Usuario
 from app.repositories.notificacao_repository import NotificacaoRepository
@@ -23,12 +24,18 @@ class NotificacaoService:
         self.notificacoes = NotificacaoRepository(sessao)
         self.avisar = avisar
 
-    def listar(self, usuario: Usuario) -> list[NotificacaoResposta]:
-        return [NotificacaoResposta.de_entidade(n) for n in self.notificacoes.listar_do_destinatario(usuario.id)]
+    def listar(self, usuario: Usuario, cursor: CursorPagina | None = None, limite: int = 50) -> list[NotificacaoResposta]:
+        cursor = cursor or CursorPagina()
+        notificacoes = self.notificacoes.listar_do_destinatario(
+            usuario.id, antes_de=cursor.antes_de, antes_id=cursor.antes_id, limite=limite
+        )
+        return [NotificacaoResposta.de_entidade(n) for n in notificacoes]
+
+    def resumir(self, usuario: Usuario) -> ResumoNotificacoesResposta:
+        return ResumoNotificacoesResposta(nao_lidas=self.notificacoes.contar_nao_lidas(usuario.id))
 
     def marcar_todas_como_lidas(self, usuario: Usuario) -> None:
-        for notificacao in self.notificacoes.listar_nao_lidas(usuario.id):
-            notificacao.lida = True
+        self.notificacoes.marcar_todas_como_lidas(usuario.id)
         self.sessao.commit()
 
     def criar(

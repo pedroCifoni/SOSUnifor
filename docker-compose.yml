@@ -27,5 +27,18 @@ services:
       timeout: 5s
       retries: 5
 
+  # Caixa de e-mail falsa para desenvolvimento: recebe tudo que a API envia por SMTP.
+  # Veja os e-mails em http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:v1.27
+
+    container_name: unisos-mailpit
+
+    restart: unless-stopped
+
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
 volumes:
   unisos_postgres_data:

@@ -12,10 +12,37 @@ class Configuracoes(BaseSettings):
     app_name: str = "Auth Service"
     ambiente: str = "desenvolvimento"
     database_url: str = "postgresql+psycopg://unisos:uni12345@localhost:5433/unisos"
+
+    # Pool de conexões por processo da API. No Neon, use em DATABASE_URL o endpoint com "-pooler".
+    db_pool_size: int = 10
+    db_max_overflow: int = 20
+    db_pool_timeout: int = 10
+    db_pool_recycle: int = 300
+    # Desligue (false) se o pooler em modo transação reclamar de prepared statements.
+    db_prepared_statements: bool = True
+
+    # Avisos em tempo real entre várias instâncias da API (Postgres LISTEN/NOTIFY).
+    # Com true, cada instância escuta o canal do banco usando DATABASE_URL_DIRETA:
+    # no Neon, é o endpoint SEM "-pooler" (LISTEN não funciona através do pooler).
+    tempo_real_distribuido: bool = False
+    database_url_direta: str = ""
     jwt_secret: str = "chave-exclusiva-para-desenvolvimento-local-nao-publicar"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
+
+    # Endereço público do front-end, usado para montar os links enviados por e-mail.
+    frontend_url: str = "http://localhost:5173"
+    redefinicao_senha_expira_minutos: int = 30
+
+    # E-mail (SMTP). Sem SMTP_HOST, os e-mails são apenas registrados no log da API.
+    smtp_host: str = ""
+    smtp_port: int = 587
+    smtp_usuario: str = ""
+    smtp_senha: str = ""
+    smtp_remetente: str = "Uni SOS <nao-responda@unisos.local>"
+    smtp_starttls: bool = True
+    smtp_ssl: bool = False
 
     model_config = SettingsConfigDict(
         env_file=ARQUIVO_ENV,

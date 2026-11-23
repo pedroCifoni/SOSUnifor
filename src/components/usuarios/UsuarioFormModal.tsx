@@ -74,6 +74,9 @@ export function UsuarioFormModal({ usuario, perfilTravado, onClose, onSubmit }: 
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
         />
+        {!usuario && (
+          <p className="-mt-2 text-xs text-muted">Ao salvar, a pessoa recebe por e-mail o login e esta senha.</p>
+        )}
 
         <fieldset disabled={perfilTravado}>
           <legend className="mb-1.5 text-xs font-semibold text-brand-900">Perfil</legend>
