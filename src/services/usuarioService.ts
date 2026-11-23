@@ -32,6 +32,10 @@ export const usuarioService = {
     return http.delete<void>(`/usuarios/${id}`)
   },
 
+  reenviarVerificacao(id: string): Promise<{ mensagem: string }> {
+    return http.post<{ mensagem: string }>(`/usuarios/${id}/reenviar-verificacao`)
+  },
+
   salvarLote(dados: LoteUsuarios): Promise<{ criadas: number; atualizadas: number; excluidas: number }> {
     return http.post('/usuarios/lote', dados)
   },

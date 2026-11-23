@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { Pencil, Plus, Trash2 } from 'lucide-react'
+import { MailWarning, Pencil, Plus, Trash2 } from 'lucide-react'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { UsuarioFormModal } from '@/components/usuarios/UsuarioFormModal'
 import { useAuth } from '@/hooks/useAuth'
@@ -29,6 +29,7 @@ export function UsuariosPage() {
   const [formulario, setFormulario] = useState<Formulario | null>(null)
   const [paraExcluir, setParaExcluir] = useState<Rascunho | null>(null)
   const [salvando, setSalvando] = useState(false)
+  const [reenviando, setReenviando] = useState<string | null>(null)
 
   const carregar = useCallback(async () => {
     setErroCarregamento(null)
@@ -104,13 +105,33 @@ export function UsuariosPage() {
       })
       toast.sucesso(mudancas.total === 1 ? 'Alteração salva.' : `${mudancas.total} alterações salvas.`)
       if (mudancas.criados.length > 0) {
-        toast.info(mudancas.criados.length === 1 ? 'O acesso foi enviado por e-mail.' : 'Os acessos foram enviados por e-mail.')
+        toast.info(
+          mudancas.criados.length === 1
+            ? 'O acesso foi enviado por e-mail. A conta só entra depois de confirmar o e-mail.'
+            : 'Os acessos foram enviados por e-mail. As contas só entram depois de confirmar o e-mail.',
+        )
+      }
+      const emailsTrocados = mudancas.editados.filter((u) => salvos?.find((s) => s.id === u.id)?.email !== u.email)
+      if (emailsTrocados.length > 0) {
+        toast.info('O novo e-mail precisa ser confirmado: enviamos um link para ele.')
       }
     } catch (err) {
       toast.erro(err instanceof Error ? err.message : 'Não foi possível salvar. Nenhuma alteração foi aplicada.')
     } finally {
       await carregar()
       setSalvando(false)
+    }
+  }
+
+  async function reenviarConfirmacao(alvo: Rascunho) {
+    setReenviando(alvo.id)
+    try {
+      const resposta = await usuarioService.reenviarVerificacao(alvo.id)
+      toast.sucesso(resposta.mensagem)
+    } catch (err) {
+      toast.erro(err instanceof Error ? err.message : 'Não foi possível reenviar a confirmação.')
+    } finally {
+      setReenviando(null)
     }
   }
 
@@ -172,6 +193,21 @@ export function UsuariosPage() {
                     )}
                   </p>
                   <p className="truncate text-xs text-muted">{u.email}</p>
+                  {!u.novo && u.emailVerificado === false && (
+                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                      <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                        <MailWarning size={12} aria-hidden /> E-mail não confirmado
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void reenviarConfirmacao(u)}
+                        disabled={reenviando === u.id}
+                        className="text-[11px] font-semibold text-brand-500 hover:text-brand-900 disabled:opacity-60"
+                      >
+                        {reenviando === u.id ? 'Enviando…' : 'Reenviar confirmação'}
+                      </button>
+                    </p>
+                  )}
                 </div>
                 <button
                   aria-label={`Editar ${u.nome}`}

@@ -1,10 +1,12 @@
 import { useState, type FormEvent } from 'react'
 import { Link, Navigate, useNavigate } from 'react-router-dom'
-import { Eye, EyeOff, Lock, Mail } from 'lucide-react'
+import { Eye, EyeOff, Lock, Mail, MailWarning } from 'lucide-react'
+import { ErroApi } from '@/api/client'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
+import { ReenviarConfirmacao } from './ReenviarConfirmacao'
 
 export function LoginPage() {
   const { usuario, login } = useAuth()
@@ -14,6 +16,8 @@ export function LoginPage() {
   const [senha, setSenha] = useState('')
   const [mostrarSenha, setMostrarSenha] = useState(false)
   const [carregando, setCarregando] = useState(false)
+  // E-mail cuja senha conferiu, mas que ainda não foi confirmado: mostra o aviso e o reenvio.
+  const [emailNaoConfirmado, setEmailNaoConfirmado] = useState<string | null>(null)
 
   if (usuario) return <Navigate to={usuario.perfil === 'admin' ? '/admin' : '/'} replace />
 
@@ -24,7 +28,12 @@ export function LoginPage() {
       const logado = await login({ email, senha })
       navigate(logado.perfil === 'admin' ? '/admin' : '/', { replace: true })
     } catch (err) {
-      toast.erro(err instanceof Error ? err.message : 'Não foi possível entrar.')
+      if (err instanceof ErroApi && err.codigo === 'email_nao_verificado') {
+        setEmailNaoConfirmado(email.trim())
+      } else {
+        setEmailNaoConfirmado(null)
+        toast.erro(err instanceof Error ? err.message : 'Não foi possível entrar.')
+      }
     } finally {
       setCarregando(false)
     }
@@ -47,7 +56,10 @@ export function LoginPage() {
             placeholder="nome.sobrenome@unifor.br"
             icon={<Mail size={18} />}
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => {
+              setEmail(e.target.value)
+              setEmailNaoConfirmado(null)
+            }}
             required
           />
           <Input
@@ -81,6 +93,22 @@ export function LoginPage() {
             Entrar
           </Button>
         </form>
+
+        {emailNaoConfirmado && (
+          <section className="mt-4 space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4" role="alert">
+            <div className="flex items-start gap-2 text-sm text-amber-800">
+              <MailWarning size={18} className="mt-0.5 shrink-0" aria-hidden />
+              <div>
+                <p className="font-semibold">Confirme o seu e-mail para entrar</p>
+                <p className="mt-1 text-xs">
+                  Enviamos um link de confirmação para <strong className="break-all">{emailNaoConfirmado}</strong>. Abra o
+                  e-mail e clique em “Confirmar e-mail”. Não encontrou? Peça um novo.
+                </p>
+              </div>
+            </div>
+            <ReenviarConfirmacao key={emailNaoConfirmado} email={emailNaoConfirmado} />
+          </section>
+        )}
 
         <p className="mt-6 text-center text-[11px] text-muted">
           Diretoria de Tecnologia da Informação · UNIFOR

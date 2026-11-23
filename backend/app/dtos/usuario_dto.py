@@ -50,10 +50,17 @@ class UsuarioResposta(RespostaDTO):
     nome: str
     email: str
     perfil: str
+    email_verificado: bool
 
     @classmethod
     def de_entidade(cls, usuario: Usuario) -> "UsuarioResposta":
-        return cls(id=str(usuario.id), nome=usuario.nome, email=usuario.email, perfil=usuario.tipo_usuario)
+        return cls(
+            id=str(usuario.id),
+            nome=usuario.nome,
+            email=usuario.email,
+            perfil=usuario.tipo_usuario,
+            email_verificado=usuario.email_verificado_em is not None,
+        )
 
 
 class UsuarioLoteResposta(RespostaDTO):

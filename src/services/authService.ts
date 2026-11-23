@@ -17,4 +17,12 @@ export const authService = {
   redefinirSenha(token: string, novaSenha: string): Promise<MensagemResposta> {
     return http.post<MensagemResposta>('/auth/redefinir-senha', { token, nova_senha: novaSenha })
   },
+
+  verificarEmail(token: string): Promise<MensagemResposta> {
+    return http.post<MensagemResposta>('/auth/verificar-email', { token })
+  },
+
+  reenviarVerificacao(email: string): Promise<MensagemResposta> {
+    return http.post<MensagemResposta>('/auth/reenviar-verificacao', { email })
+  },
 }

@@ -17,6 +17,7 @@ from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
 from app.services.usuario_service import UsuarioService
+from app.services.verificacao_email_service import VerificacaoEmailService
 
 
 Banco = Annotated[Session, Depends(obter_banco)]
@@ -44,6 +45,10 @@ def auth_service(banco: Banco) -> AuthService:
 
 def auth_service_com_email(banco: Banco, tarefas: BackgroundTasks) -> AuthService:
     return AuthService(banco, emails=_emails(tarefas))
+
+
+def verificacao_email_service(banco: Banco, tarefas: BackgroundTasks) -> VerificacaoEmailService:
+    return VerificacaoEmailService(banco, emails=_emails(tarefas))
 
 
 def usuario_service(banco: Banco, tarefas: BackgroundTasks) -> UsuarioService:

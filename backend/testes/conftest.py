@@ -19,6 +19,7 @@ os.environ["RABBITMQ_URL"] = "amqp://guest:guest@127.0.0.1:1/"
 os.environ["AMBIENTE"] = "teste"
 
 from collections.abc import Callable
+from datetime import datetime, timezone
 
 import pytest
 from fastapi.testclient import TestClient
@@ -28,7 +29,7 @@ from app.core.database import engine
 from app.main import app
 
 
-TABELAS_DE_TESTE = "notificacoes, eventos_ocorrencia, tokens_redefinicao_senha, ocorrencias, areas_campus, credentials"
+TABELAS_DE_TESTE = "notificacoes, eventos_ocorrencia, tokens_redefinicao_senha, tokens_verificacao_email, ocorrencias, areas_campus, credentials"
 
 
 @pytest.fixture
@@ -74,6 +75,7 @@ def criar_usuario() -> Callable[..., object]:
         senha: str = "senha123",
         ativo: bool = True,
         nome: str = "Pessoa de Teste",
+        email_verificado: bool = True,
     ) -> Usuario:
         with FabricaSessao() as sessao:
             usuario = Usuario(
@@ -82,6 +84,7 @@ def criar_usuario() -> Callable[..., object]:
                 senha_hash=gerar_hash_senha(senha),
                 tipo_usuario=perfil,
                 ativo=ativo,
+                email_verificado_em=datetime.now(timezone.utc) if email_verificado else None,
             )
             sessao.add(usuario)
             sessao.commit()

@@ -12,6 +12,8 @@ export interface Usuario {
   nome: string
   email: string
   perfil: Perfil
+  /** Vem da API nas listas de usuários; ausente no usuário montado a partir do token. */
+  emailVerificado?: boolean
 }
 
 export interface DadosUsuario {

@@ -157,10 +157,11 @@ A API cria estas contas quando elas ainda não existem. A senha inicial de todas
 
 ## E-mails
 
-A API envia e-mails via SMTP em três situações:
+A API envia e-mails via SMTP nestas situações:
 
-- **Boas-vindas:** quando o administrador cria uma nova conta, o usuário recebe um e-mail com seu acesso e a senha inicial.
-- **Esqueci minha senha:** envia um link de redefinição de uso único válido por **30 minutos**.
+- **Boas-vindas:** quando o administrador cria uma nova conta, o usuário recebe um e-mail com seu acesso, a senha inicial e o botão **Confirmar e-mail**.
+- **Confirmação de e-mail:** contas criadas pelo administrador só entram depois de confirmar o e-mail (link de uso único válido por **48 horas**; o login responde `403` com `"codigo": "email_nao_verificado"`). Um novo link pode ser pedido na tela de login (até 3 por hora) ou pelo administrador; trocar o e-mail de uma conta exige confirmar de novo. Contas que já existiam quando a verificação foi criada continuam entrando normalmente.
+- **Esqueci minha senha:** envia um link de redefinição de uso único válido por **30 minutos** (concluir a redefinição também confirma o e-mail).
 - **Aviso de senha alterada:** confirma para o usuário que a senha da conta foi modificada.
 
 Em desenvolvimento local, o `docker-compose.yml` sobe o **Mailpit** (`SMTP_HOST=localhost`, `SMTP_PORT=1025`). Tudo o que a API envia aparece em `http://localhost:8025`, sem enviar e-mails reais. Se `SMTP_HOST` ficar vazio em desenvolvimento, o conteúdo do e-mail é registrado apenas no log da API.

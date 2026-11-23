@@ -5,12 +5,13 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.config import configuracoes
-from app.core.excecoes import AcessoNegadoErro, NaoAutenticadoErro, RegraDeNegocioErro
+from app.core.excecoes import AcessoNegadoErro, EmailNaoVerificadoErro, NaoAutenticadoErro, RegraDeNegocioErro
 from app.core.seguranca import conferir_senha, criar_token, gerar_hash_senha, ler_id_do_token
 from app.dtos.auth_dto import EsqueciSenhaEntrada, LoginEntrada, MensagemResposta, RedefinirSenhaEntrada, TokenResposta
 from app.entities.token_redefinicao_senha import TokenRedefinicaoSenha
 from app.entities.usuario import Usuario
 from app.repositories.token_redefinicao_senha_repository import TokenRedefinicaoSenhaRepository
+from app.repositories.token_verificacao_email_repository import TokenVerificacaoEmailRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.email_service import EmailService
 
@@ -27,6 +28,9 @@ MENSAGEM_PEDIDO_REDEFINICAO = (
     "Se o e-mail estiver cadastrado, você receberá em instantes um link para criar uma nova senha."
 )
 MENSAGEM_LINK_INVALIDO = "Este link de redefinição é inválido ou expirou. Peça um novo na tela de login."
+MENSAGEM_EMAIL_NAO_VERIFICADO = (
+    "Seu e-mail ainda não foi confirmado. Use o link que enviamos para a sua caixa de entrada ou peça um novo."
+)
 
 
 def _hash_do_token(token: str) -> str:
@@ -38,6 +42,7 @@ class AuthService:
         self.sessao = sessao
         self.usuarios = UsuarioRepository(sessao)
         self.tokens_redefinicao = TokenRedefinicaoSenhaRepository(sessao)
+        self.tokens_verificacao = TokenVerificacaoEmailRepository(sessao)
         self.emails = emails or EmailService()
 
     def entrar(self, dados: LoginEntrada) -> TokenResposta:
@@ -48,6 +53,9 @@ class AuthService:
         self.sessao.close()
         if usuario is None or not usuario.ativo or not conferir_senha(dados.senha, usuario.senha_hash):
             raise NaoAutenticadoErro("E-mail ou senha inválidos.")
+        # Só depois de a senha conferir: assim esta resposta não ajuda ninguém a descobrir senhas.
+        if usuario.email_verificado_em is None:
+            raise EmailNaoVerificadoErro(MENSAGEM_EMAIL_NAO_VERIFICADO)
         return TokenResposta(token=criar_token(usuario))
 
     # ---------- esqueci minha senha ----------
@@ -87,6 +95,10 @@ class AuthService:
 
         usuario.senha_hash = gerar_hash_senha(dados.nova_senha)
         self.tokens_redefinicao.invalidar_pendentes(usuario.id, agora)
+        # O link chegou à caixa de entrada da conta, então também comprova que o e-mail é dela.
+        if usuario.email_verificado_em is None:
+            usuario.email_verificado_em = agora
+            self.tokens_verificacao.invalidar_pendentes(usuario.id, agora)
         self.sessao.commit()
         self.emails.enviar_aviso_senha_alterada(usuario.nome, usuario.email)
         return MensagemResposta(mensagem="Senha alterada. Você já pode entrar com a nova senha.")

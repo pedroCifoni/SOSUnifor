@@ -29,6 +29,7 @@ class Configuracoes(BaseSettings):
     # Endereço público do front-end, usado para montar os links enviados por e-mail.
     frontend_url: str = "http://localhost:5173"
     redefinicao_senha_expira_minutos: int = 30
+    verificacao_email_expira_horas: int = 48
 
     # E-mail (SMTP). Sem SMTP_HOST, os e-mails são apenas registrados no log da API.
     smtp_host: str = ""

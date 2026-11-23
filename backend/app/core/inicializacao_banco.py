@@ -4,6 +4,8 @@ Ajusta tabelas de versões antigas sem apagar dados, cria as tabelas que faltam
 e cadastra as contas iniciais quando ainda não existem.
 """
 
+from datetime import datetime, timezone
+
 from sqlalchemy import inspect, select, text
 from sqlalchemy.orm import Session
 
@@ -39,6 +41,7 @@ def inicializar_banco() -> None:
 
 def _executar_etapas() -> None:
     atualizar_credenciais_legadas()
+    adicionar_verificacao_de_email()
     atualizar_ocorrencias_legadas()
     Base.metadata.create_all(bind=engine)
     criar_indices_de_consulta()
@@ -96,13 +99,44 @@ def preparar_sequencia_de_protocolo() -> None:
 
 
 def criar_usuarios_iniciais() -> None:
-    """Cria as contas iniciais que ainda não existem."""
+    """Cria as contas iniciais que ainda não existem (já com o e-mail confirmado)."""
     with Session(engine) as banco:
         emails_existentes = set(banco.scalars(select(Usuario.email)).all())
+        agora = datetime.now(timezone.utc)
         for nome, email, perfil in CONTAS_INICIAIS:
             if email not in emails_existentes:
-                banco.add(Usuario(nome=nome, email=email, senha_hash=gerar_hash_senha(SENHA_INICIAL), tipo_usuario=perfil))
+                banco.add(
+                    Usuario(
+                        nome=nome,
+                        email=email,
+                        senha_hash=gerar_hash_senha(SENHA_INICIAL),
+                        tipo_usuario=perfil,
+                        email_verificado_em=agora,
+                    )
+                )
         banco.commit()
+
+
+def adicionar_verificacao_de_email() -> None:
+    """Cria a coluna `email_verificado_em` sem trancar ninguém do lado de fora.
+
+    Só na primeira vez (quando a coluna ainda não existe), todas as contas que já existem são
+    marcadas como confirmadas: elas foram criadas antes da verificação existir. Daí em diante,
+    contas novas nascem sem confirmação. Coluna e marcação vão na mesma transação.
+    """
+    inspecao = inspect(engine)
+    if not inspecao.has_table("credentials"):
+        return  # banco novo: create_all cria a tabela já com a coluna
+    if "email_verificado_em" in {coluna["name"] for coluna in inspecao.get_columns("credentials")}:
+        return
+
+    with engine.begin() as conexao:
+        if engine.dialect.name == "postgresql":
+            conexao.execute(text("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS email_verificado_em TIMESTAMP WITH TIME ZONE"))
+            conexao.execute(text("UPDATE credentials SET email_verificado_em = now() WHERE email_verificado_em IS NULL"))
+        else:
+            conexao.execute(text("ALTER TABLE credentials ADD COLUMN email_verificado_em DATETIME"))
+            conexao.execute(text("UPDATE credentials SET email_verificado_em = CURRENT_TIMESTAMP WHERE email_verificado_em IS NULL"))
 
 
 def atualizar_credenciais_legadas() -> None:

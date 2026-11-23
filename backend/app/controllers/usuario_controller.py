@@ -4,6 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 
 from app.controllers.dependencias import Administrador, UsuarioAtual, usuario_service
+from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
     SegurancaNotificadaResposta,
     UsuarioAtualizacao,
@@ -49,7 +50,12 @@ def atualizar(usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Admini
     return servico.atualizar(usuario_id, dados, administrador)
 
 
-@router.delete("/usuarios/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/usuarios/{usuario_id}/reenviar-verificacao", response_model=MensagemResposta)
+def reenviar_verificacao(usuario_id: UUID, _: Administrador, servico: Servico) -> MensagemResposta:
+    return servico.reenviar_verificacao(usuario_id)
+
+
+@router.delete("/usuarios/{usuario_id}",status_code=status.HTTP_204_NO_CONTENT)
 def excluir(usuario_id: UUID, administrador: Administrador, servico: Servico) -> None:
     servico.excluir(usuario_id, administrador)
 
