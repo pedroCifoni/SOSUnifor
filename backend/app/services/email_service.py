@@ -29,18 +29,29 @@ def _link_do_sistema(caminho: str = "") -> str:
     return configuracoes.frontend_url.rstrip("/") + caminho
 
 
+def _botao(link: str, rotulo: str) -> str:
+    return (
+        f'<p style="margin:24px 0"><a href="{escape(link)}" style="background:#0b2a6f;color:#fff;text-decoration:none;'
+        f'display:inline-block;padding:12px 24px;border-radius:4px;font-weight:bold">{escape(rotulo)}</a></p>'
+    )
+
+
 class EmailService:
     def __init__(self, agendar: AgendarTarefa = executar_agora) -> None:
         self.agendar = agendar
 
-    def enviar_boas_vindas(self, nome: str, email: str, senha: str) -> None:
-        link = _link_do_sistema("/login")
+    def enviar_boas_vindas(self, nome: str, email: str, senha: str, token_verificacao: str) -> None:
+        link_login = _link_do_sistema("/login")
+        link_confirmacao = _link_do_sistema(f"/verificar-email?token={token_verificacao}")
+        horas = configuracoes.verificacao_email_expira_horas
         texto = (
             f"Olá, {nome}!\n\n"
             "Uma conta foi criada para você no Uni SOS.\n\n"
             f"E-mail de acesso: {email}\n"
             f"Senha: {senha}\n\n"
-            f"Acesse em: {link}\n\n"
+            "Antes do primeiro acesso, confirme o seu e-mail neste link:\n"
+            f"{link_confirmacao}\n\n"
+            f"O link vale por {horas} horas. Depois de confirmar, entre em: {link_login}\n\n"
             "Por segurança, não compartilhe esta senha. Se quiser trocá-la, use a opção "
             "\"Esqueci minha senha\" na tela de login."
         )
@@ -52,10 +63,34 @@ class EmailService:
 <tr><td style="color:#6b7280;padding:4px 0">E-mail</td><td><strong>{escape(email)}</strong></td></tr>
 <tr><td style="color:#6b7280;padding:4px 0">Senha</td><td><strong style="font-family:monospace;font-size:16px">{escape(senha)}</strong></td></tr>
 </table>
-<p style="margin:24px 0"><a href="{escape(link)}" style="background:#0b2a6f;color:#fff;text-decoration:none;display:inline-block;padding:12px 24px;border-radius:4px;font-weight:bold">Acessar o sistema</a></p>
-<p style="font-size:13px;color:#6b7280">Por segurança, não compartilhe esta senha. Se quiser trocá-la, use a opção "Esqueci minha senha" na tela de login.</p>""",
+<p>Antes do primeiro acesso, confirme que este e-mail é seu:</p>
+{_botao(link_confirmacao, "Confirmar e-mail")}
+<p style="font-size:13px;color:#6b7280">O link vale por {horas} horas e só pode ser usado uma vez. Depois de confirmar, entre em
+<a href="{escape(link_login)}" style="color:#0b2a6f">{escape(link_login)}</a>.<br>
+Por segurança, não compartilhe esta senha. Se quiser trocá-la, use a opção "Esqueci minha senha" na tela de login.</p>""",
         )
         self.agendar(enviar_email, email, "Sua conta no Uni SOS foi criada", texto, html)
+
+    def enviar_confirmacao_email(self, nome: str, email: str, token: str) -> None:
+        """Novo link de confirmação: reenvio pedido pela pessoa ou pelo admin, ou e-mail da conta alterado."""
+        link = _link_do_sistema(f"/verificar-email?token={token}")
+        horas = configuracoes.verificacao_email_expira_horas
+        texto = (
+            f"Olá, {nome}!\n\n"
+            "Confirme que este e-mail é seu para continuar usando o Uni SOS.\n\n"
+            f"Para confirmar, acesse: {link}\n\n"
+            f"O link vale por {horas} horas e só pode ser usado uma vez.\n"
+            "Se você não reconhece esta conta, ignore este e-mail."
+        )
+        html = _html(
+            "Confirme o seu e-mail",
+            f"""<p>Olá, {escape(nome)}!</p>
+<p>Confirme que este e-mail é seu para continuar usando o Uni SOS.</p>
+{_botao(link, "Confirmar e-mail")}
+<p style="font-size:13px;color:#6b7280">O link vale por {horas} horas e só pode ser usado uma vez.<br>
+Se você não reconhece esta conta, ignore este e-mail.</p>""",
+        )
+        self.agendar(enviar_email, email, "Confirme o seu e-mail · Uni SOS", texto, html)
 
     def enviar_redefinicao_senha(self, nome: str, email: str, token: str) -> None:
         link = _link_do_sistema(f"/redefinir-senha?token={token}")

@@ -1,34 +1,88 @@
+from datetime import datetime, timezone
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.aspectos import auditar, campos, nomes_dos_campos_enviados
 from app.core.excecoes import ConflitoErro, NaoEncontradoErro, RegraDeNegocioErro
 from app.core.seguranca import gerar_hash_senha
+from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
+    LIMITE_PADRAO_USUARIOS,
+    ResumoUsuariosResposta,
     SegurancaNotificadaResposta,
+    UsuarioAdminResposta,
     UsuarioAtualizacao,
+    UsuarioAtualizacaoLote,
     UsuarioEntrada,
     UsuarioLoteEntrada,
     UsuarioLoteResposta,
     UsuarioResposta,
 )
 from app.entities.usuario import Usuario
+from app.repositories.token_redefinicao_senha_repository import TokenRedefinicaoSenhaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.email_service import EmailService
+from app.services.verificacao_email_service import VerificacaoEmailService
+
+
+def _campos_alterados_no_lote(atualizacao: UsuarioAtualizacaoLote) -> str:
+    """Nomes (nunca valores) dos campos que o lote alterou; senha vazia é ignorada pelo service."""
+    enviados = atualizacao.model_dump(exclude={"id"}, exclude_unset=True)
+    if not enviados.get("senha"):
+        enviados.pop("senha", None)
+    return ",".join(sorted(enviados))
+
+
+def _itens_do_lote(dados: UsuarioLoteEntrada, resultado: UsuarioLoteResposta) -> list[dict]:
+    """Um registro de auditoria por conta afetada pelo lote, com o mesmo vocabulário das rotas individuais."""
+    return [
+        *(
+            {"acao": "usuario.criar", "entidade_id": usuario_id, "detalhes": {"perfil": criacao.perfil}}
+            for usuario_id, criacao in zip(resultado.ids_criados, dados.criacoes)
+        ),
+        *(
+            {
+                "acao": "usuario.editar",
+                "entidade_id": atualizacao.id,
+                "detalhes": {"campos_alterados": _campos_alterados_no_lote(atualizacao)},
+            }
+            for atualizacao in dados.atualizacoes
+        ),
+        *({"acao": "usuario.excluir", "entidade_id": usuario_id, "detalhes": {}} for usuario_id in dados.exclusoes),
+    ]
 
 
 class UsuarioService:
     def __init__(self, sessao: Session, emails: EmailService | None = None) -> None:
         self.sessao = sessao
         self.usuarios = UsuarioRepository(sessao)
+        self.tokens_redefinicao = TokenRedefinicaoSenhaRepository(sessao)
         self.emails = emails or EmailService()
+        self.verificacao = VerificacaoEmailService(sessao, self.emails)
+        # Contas que mudaram de e-mail nesta operação: recebem o link no endereço novo após o commit.
+        self._confirmacoes_pendentes: list[tuple[Usuario, str]] = []
 
     # ---------- consultas ----------
-    def listar_ativos(self) -> list[UsuarioResposta]:
-        return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos()]
+    def listar_ativos(
+        self,
+        *,
+        busca: str | None = None,
+        perfil: str | None = None,
+        limite: int = LIMITE_PADRAO_USUARIOS,
+        pagina: int = 1,
+    ) -> list[UsuarioAdminResposta]:
+        usuarios = self.usuarios.listar_ativos(busca=busca, perfil=perfil, limite=limite, pagina=pagina)
+        return [UsuarioAdminResposta.de_entidade(usuario) for usuario in usuarios]
 
-    def listar_por_perfil(self, perfil: str) -> list[UsuarioResposta]:
-        return [UsuarioResposta.de_entidade(usuario) for usuario in self.usuarios.listar_ativos_por_perfil(perfil)]
+    def resumir_ativos(self, *, busca: str | None = None, perfil: str | None = None) -> ResumoUsuariosResposta:
+        return ResumoUsuariosResposta(total=self.usuarios.contar_ativos(busca=busca, perfil=perfil))
+
+    def listar_por_perfil(self, perfil: str, com_email: bool = False) -> list[UsuarioResposta]:
+        return [
+            UsuarioResposta.de_entidade(usuario, com_email=com_email)
+            for usuario in self.usuarios.listar_ativos_por_perfil(perfil)
+        ]
 
     def listar_segurancas_notificadas(self) -> list[SegurancaNotificadaResposta]:
         """Equipe de segurança acionada em um SOS. Viatura e distância ainda são simuladas."""
@@ -44,14 +98,25 @@ class UsuarioService:
         ]
 
     # ---------- comandos ----------
-    def criar(self, dados: UsuarioEntrada) -> UsuarioResposta:
+    # Sem "ator": quem cria é o administrador autenticado na requisição (contexto do aspecto HTTP).
+    @auditar("usuario.criar", entidade="usuario", entidade_id="resultado.id", detalhes=campos(perfil="dados.perfil"))
+    def criar(self, dados: UsuarioEntrada) -> UsuarioAdminResposta:
         usuario = self._novo_usuario(dados)
+        self.sessao.flush()
+        token = self.verificacao.emitir_token(usuario)
         self.sessao.commit()
         self.sessao.refresh(usuario)
-        self._enviar_acesso(usuario, dados.senha)
-        return UsuarioResposta.de_entidade(usuario)
+        self._enviar_acesso(usuario, dados.senha, token)
+        return UsuarioAdminResposta.de_entidade(usuario)
 
-    def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioResposta:
+    @auditar(
+        "usuario.editar",
+        entidade="usuario",
+        entidade_id="usuario_id",
+        ator="administrador.id",
+        detalhes=nomes_dos_campos_enviados("dados"),
+    )
+    def atualizar(self, usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Usuario) -> UsuarioAdminResposta:
         usuario = self._buscar_ativo(usuario_id)
         novos_dados = dados.model_dump(exclude_unset=True)
         if not novos_dados:
@@ -59,12 +124,28 @@ class UsuarioService:
         self._aplicar_alteracoes(usuario, novos_dados, administrador)
         self.sessao.commit()
         self.sessao.refresh(usuario)
-        return UsuarioResposta.de_entidade(usuario)
+        self._enviar_confirmacoes_pendentes()
+        return UsuarioAdminResposta.de_entidade(usuario)
 
+    def reenviar_verificacao(self, usuario_id: UUID) -> MensagemResposta:
+        return self.verificacao.reenviar_pelo_admin(self._buscar_ativo(usuario_id))
+
+    @auditar("usuario.excluir", entidade="usuario", entidade_id="usuario_id", ator="administrador.id")
     def excluir(self, usuario_id: UUID, administrador: Usuario) -> None:
         self._desativar(self._buscar_ativo(usuario_id), administrador)
         self.sessao.commit()
 
+    @auditar(
+        "usuario.salvar_em_lote",
+        entidade="usuario",
+        ator="administrador.id",
+        detalhes=lambda ponto, _: {
+            "criacoes": len(ponto.resolver("dados.criacoes") or []),
+            "atualizacoes": len(ponto.resolver("dados.atualizacoes") or []),
+            "exclusoes": len(ponto.resolver("dados.exclusoes") or []),
+        },
+        itens=lambda ponto, resultado: _itens_do_lote(ponto.resolver("dados"), resultado),
+    )
     def salvar_em_lote(self, dados: UsuarioLoteEntrada, administrador: Usuario) -> UsuarioLoteResposta:
         """Aplica o rascunho do painel administrativo em uma única transação: tudo ou nada."""
         # O banco só enxerga as contas novas depois do flush; por isso e-mails repetidos dentro
@@ -75,8 +156,9 @@ class UsuarioService:
         if len(emails_do_lote) != len(set(emails_do_lote)):
             raise ConflitoErro("Há e-mails repetidos entre os usuários salvos.")
         try:
-            criados = [(self._novo_usuario(criacao), criacao.senha) for criacao in dados.criacoes]
+            novos = [(self._novo_usuario(criacao), criacao.senha) for criacao in dados.criacoes]
             self.sessao.flush()
+            criados = [(usuario, senha, self.verificacao.emitir_token(usuario)) for usuario, senha in novos]
             for atualizacao in dados.atualizacoes:
                 usuario = self._buscar_ativo(UUID(atualizacao.id))
                 novos_dados = atualizacao.model_dump(exclude={"id"}, exclude_unset=True)
@@ -88,17 +170,45 @@ class UsuarioService:
             self.sessao.commit()
         except Exception:
             self.sessao.rollback()
+            self._confirmacoes_pendentes.clear()
             raise
         # Só depois do commit: ninguém recebe a senha de uma conta que acabou não sendo criada.
-        for usuario, senha in criados:
-            self._enviar_acesso(usuario, senha)
+        for usuario, senha, token in criados:
+            self._enviar_acesso(usuario, senha, token)
+        self._enviar_confirmacoes_pendentes()
         return UsuarioLoteResposta(
-            criadas=len(dados.criacoes), atualizadas=len(dados.atualizacoes), excluidas=len(dados.exclusoes)
+            criadas=len(dados.criacoes),
+            atualizadas=len(dados.atualizacoes),
+            excluidas=len(dados.exclusoes),
+            ids_criados=[str(usuario.id) for usuario, _, _ in criados],
         )
 
     # ---------- regras ----------
-    def _enviar_acesso(self, usuario: Usuario, senha: str) -> None:
-        self.emails.enviar_boas_vindas(usuario.nome, usuario.email, senha)
+    def _enviar_acesso(self, usuario: Usuario, senha: str, token_verificacao: str) -> None:
+        self.emails.enviar_boas_vindas(usuario.nome, usuario.email, senha, token_verificacao)
+
+    def _enviar_confirmacoes_pendentes(self) -> None:
+        for usuario, token in self._confirmacoes_pendentes:
+            self.emails.enviar_confirmacao_email(usuario.nome, usuario.email, token)
+        self._confirmacoes_pendentes.clear()
+
+    def _trocar_email(self, usuario: Usuario, novo_email: str, administrador: Usuario) -> None:
+        """E-mail novo precisa ser confirmado de novo; links antigos (confirmação e senha) deixam de valer."""
+        email = self._email_disponivel(novo_email, usuario.id)
+        if email == usuario.email:
+            return
+        # O admin que troca o próprio e-mail fica sem acesso até confirmá-lo. Se o endereço tiver um erro
+        # de digitação, só outro admin (ativo e confirmado) consegue corrigir; sem ele, a troca é recusada.
+        if usuario.id == administrador.id and self.usuarios.contar_admins_confirmados(exceto=usuario.id) == 0:
+            raise RegraDeNegocioErro(
+                "Para trocar o seu próprio e-mail, é preciso existir outro administrador com e-mail confirmado. "
+                "Peça a ele para fazer a troca ou cadastre um antes."
+            )
+        agora = datetime.now(timezone.utc)
+        usuario.email = email
+        usuario.email_verificado_em = None
+        self.tokens_redefinicao.invalidar_pendentes(usuario.id, agora)
+        self._confirmacoes_pendentes.append((usuario, self.verificacao.emitir_token(usuario, agora)))
 
     def _novo_usuario(self, dados: UsuarioEntrada) -> Usuario:
         return self.usuarios.adicionar(
@@ -113,8 +223,8 @@ class UsuarioService:
     def _aplicar_alteracoes(self, usuario: Usuario, novos_dados: dict, administrador: Usuario) -> None:
         if usuario.id == administrador.id and "perfil" in novos_dados:
             raise RegraDeNegocioErro("Você não pode alterar o próprio perfil.")
-        if "email" in novos_dados:
-            usuario.email = self._email_disponivel(novos_dados["email"], usuario.id)
+        if novos_dados.get("email"):
+            self._trocar_email(usuario, novos_dados["email"], administrador)
         if "nome" in novos_dados:
             usuario.nome = novos_dados["nome"].strip()
         if "perfil" in novos_dados:
@@ -129,6 +239,8 @@ class UsuarioService:
             raise RegraDeNegocioErro("Você não pode excluir a si mesmo.")
         self._garantir_ao_menos_um_admin(usuario)
         usuario.ativo = False
+        # Links de confirmação de uma conta desativada não servem mais para nada.
+        self.verificacao.tokens.apagar_do_usuario(usuario.id)
 
     def _buscar_ativo(self, usuario_id: UUID) -> Usuario:
         usuario = self.usuarios.buscar_por_id(usuario_id)

@@ -8,6 +8,13 @@ from app.entities.usuario import Usuario
 
 Perfil = Literal["usuario", "seguranca", "tecnico", "admin"]
 
+LIMITE_PADRAO_USUARIOS = 50
+LIMITE_MAXIMO_USUARIOS = 200
+
+
+def ajustar_limite_usuarios(limite: int) -> int:
+    return max(1, min(limite, LIMITE_MAXIMO_USUARIOS))
+
 
 # ---------- entrada ----------
 class UsuarioEntrada(BaseModel):
@@ -46,20 +53,49 @@ class UsuarioLoteEntrada(BaseModel):
 
 # ---------- saída ----------
 class UsuarioResposta(RespostaDTO):
+    """Dados públicos de uma conta (ex.: listas de seguranças e técnicos, abertas a qualquer usuário logado)."""
+
     id: str
     nome: str
-    email: str
+    # Minimização (LGPD, art. 6º, III): o e-mail de outras pessoas só vai para o administrador.
+    email: str | None
     perfil: str
 
     @classmethod
-    def de_entidade(cls, usuario: Usuario) -> "UsuarioResposta":
-        return cls(id=str(usuario.id), nome=usuario.nome, email=usuario.email, perfil=usuario.tipo_usuario)
+    def de_entidade(cls, usuario: Usuario, com_email: bool = True) -> "UsuarioResposta":
+        return cls(
+            id=str(usuario.id),
+            nome=usuario.nome,
+            email=usuario.email if com_email else None,
+            perfil=usuario.tipo_usuario,
+        )
+
+
+class ResumoUsuariosResposta(RespostaDTO):
+    total: int
+
+
+class UsuarioAdminResposta(UsuarioResposta):
+    """Visão do administrador: inclui dados internos de gestão, como a confirmação do e-mail."""
+
+    email_verificado: bool
+
+    @classmethod
+    def de_entidade(cls, usuario: Usuario) -> "UsuarioAdminResposta":
+        return cls(
+            id=str(usuario.id),
+            nome=usuario.nome,
+            email=usuario.email,
+            perfil=usuario.tipo_usuario,
+            email_verificado=usuario.email_verificado_em is not None,
+        )
 
 
 class UsuarioLoteResposta(RespostaDTO):
     criadas: int
     atualizadas: int
     excluidas: int
+    ids_criados: list[str] = Field(default_factory=list)
 
 
 class SegurancaNotificadaResposta(RespostaDTO):

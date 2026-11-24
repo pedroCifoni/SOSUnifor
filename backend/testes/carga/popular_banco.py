@@ -73,6 +73,7 @@ def inserir(sessao: Session, entidade, linhas: list[dict]) -> None:
 def popular_usuarios(sessao: Session) -> None:
     existentes = set(sessao.scalars(select(Usuario.email).where(Usuario.email.like("carga.%"))))
     senha_hash = None
+    agora = datetime.now(timezone.utc)
     novos = []
     for perfil, total in TOTAL_POR_PERFIL.items():
         for numero in range(1, total + 1):
@@ -89,6 +90,7 @@ def popular_usuarios(sessao: Session) -> None:
                     "senha_hash": senha_hash,
                     "tipo_usuario": perfil,
                     "ativo": True,
+                    "email_verificado_em": agora,  # contas de carga já entram confirmadas
                 }
             )
     inserir(sessao, Usuario, novos)

@@ -25,10 +25,20 @@ class Configuracoes(BaseSettings):
     access_token_expire_minutes: int = 60
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     rabbitmq_url: str = "amqp://unisos:uni12345@localhost:5672/"
+    # Aspecto medir_desempenho: chamadas de service acima deste tempo são registradas no log.
+    desempenho_limite_ms: int = 500
 
     # Endereço público do front-end, usado para montar os links enviados por e-mail.
     frontend_url: str = "http://localhost:5173"
     redefinicao_senha_expira_minutos: int = 30
+    verificacao_email_expira_horas: int = 48
+
+    # Retenção (LGPD): rotina executada a cada subida da API (app/services/retencao_service.py).
+    # Notificações já lidas são apagadas depois deste número de dias.
+    retencao_notificacoes_lidas_dias: int = 180
+    # Tokens de redefinição de senha vencidos são apagados depois destas horas além do vencimento.
+    # A folga mantém os pedidos recentes, que contam no limite de "esqueci minha senha" por hora.
+    retencao_tokens_vencidos_horas: int = 24
 
     # E-mail (SMTP). Sem SMTP_HOST, os e-mails são apenas registrados no log da API.
     smtp_host: str = ""
@@ -38,6 +48,11 @@ class Configuracoes(BaseSettings):
     smtp_remetente: str = "Uni SOS <nao-responda@unisos.local>"
     smtp_starttls: bool = True
     smtp_ssl: bool = False
+
+    # E-mail por API HTTP (porta 443). Com BREVO_API_KEY preenchida, ela é usada no lugar do SMTP.
+    # Necessário no plano gratuito do Render, que bloqueia as portas de SMTP (25, 465 e 587).
+    # O remetente continua vindo de SMTP_REMETENTE e precisa estar verificado na Brevo.
+    brevo_api_key: str = ""
 
     model_config = SettingsConfigDict(
         env_file=ARQUIVO_ENV,

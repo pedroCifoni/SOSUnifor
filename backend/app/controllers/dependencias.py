@@ -7,17 +7,20 @@ from fastapi import BackgroundTasks, Depends
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from sqlalchemy.orm import Session
 
-from app.core import mensageria
+from app.core import contexto_requisicao, mensageria
 from app.core.database import obter_banco
 from app.entities.usuario import Usuario
 from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
+from app.services.auditoria_service import AuditoriaService
 from app.services.auth_service import AuthService
 from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
 from app.services.privacidade_service import PrivacidadeService
+from app.services.relatorio_service import RelatorioService
 from app.services.usuario_service import UsuarioService
+from app.services.verificacao_email_service import VerificacaoEmailService
 
 
 Banco = Annotated[Session, Depends(obter_banco)]
@@ -47,6 +50,10 @@ def auth_service_com_email(banco: Banco, tarefas: BackgroundTasks) -> AuthServic
     return AuthService(banco, emails=_emails(tarefas))
 
 
+def verificacao_email_service(banco: Banco, tarefas: BackgroundTasks) -> VerificacaoEmailService:
+    return VerificacaoEmailService(banco, emails=_emails(tarefas))
+
+
 def usuario_service(banco: Banco, tarefas: BackgroundTasks) -> UsuarioService:
     return UsuarioService(banco, emails=_emails(tarefas))
 
@@ -59,6 +66,12 @@ def ocorrencia_service(banco: Banco, tarefas: BackgroundTasks) -> OcorrenciaServ
     return OcorrenciaService(banco, avisar=_avisador(tarefas))
 
 
+def privacidade_service(banco: Banco, tarefas: BackgroundTasks) -> PrivacidadeService:
+    return PrivacidadeService(banco, avisar=_avisador(tarefas))
+def relatorio_service(banco: Banco) -> RelatorioService:
+    return RelatorioService(banco)
+
+
 def notificacao_service(banco: Banco) -> NotificacaoService:
     return NotificacaoService(banco)
 
@@ -67,8 +80,8 @@ def arquivo_service(banco: Banco) -> ArquivoService:
     return ArquivoService(banco)
 
 
-def privacidade_service(banco: Banco) -> PrivacidadeService:
-    return PrivacidadeService(banco)
+def auditoria_service(banco: Banco) -> AuditoriaService:
+    return AuditoriaService(banco)
 
 
 # ---------- autenticação ----------
@@ -76,7 +89,10 @@ def usuario_atual(
     credenciais: Annotated[HTTPAuthorizationCredentials | None, Depends(_esquema_bearer)],
     servico: Annotated[AuthService, Depends(auth_service)],
 ) -> Usuario:
-    return servico.usuario_do_token(credenciais.credentials if credenciais else None)
+    usuario = servico.usuario_do_token(credenciais.credentials if credenciais else None)
+    # Anota no contexto da requisição quem está agindo: os aspectos de auditoria leem daqui.
+    contexto_requisicao.definir_ator(usuario.id)
+    return usuario
 
 
 def exigir_perfil(*perfis: str):

@@ -6,7 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.controllers import routers
-from app.core import mensageria
+from app.core import eventos, mensageria
+from app.core.aspecto_http import AspectoHttp, instalar_mascaramento_de_logs
+from app.core.aspectos import tecer_aspectos_transversais
 from app.core.config import configuracoes, obter_origens_cors, validar_configuracao_de_producao
 from app.core.excecoes import ErroAplicacao
 from app.core.inicializacao_banco import inicializar_banco
@@ -20,16 +22,23 @@ def regex_origem_de_rede_em_desenvolvimento() -> str | None:
 
 
 logging.basicConfig(level=logging.INFO)
+# Mascara token=..., Bearer e senha em todos os logs (inclusive no log de acesso do uvicorn).
+instalar_mascaramento_de_logs()
+# Tecelagem (weaving) por padrão: medir_desempenho em todos os métodos públicos dos services.
+tecer_aspectos_transversais(configuracoes.desempenho_limite_ms)
 
 
 @asynccontextmanager
 async def ciclo_de_vida(app: FastAPI):
     validar_configuracao_de_producao()
+    instalar_mascaramento_de_logs()
     inicializar_banco()
     await mensageria.iniciar()
+    await eventos.iniciar(mensageria.conexao())
     try:
         yield
     finally:
+        await eventos.encerrar()
         await mensageria.encerrar()
 
 
@@ -41,12 +50,18 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+# Registrado por último = camada mais externa: mede e identifica a requisição inteira.
+app.add_middleware(AspectoHttp)
 
 
 @app.exception_handler(ErroAplicacao)
 async def tratar_erro_da_aplicacao(_: Request, erro: ErroAplicacao) -> JSONResponse:
-    return JSONResponse(status_code=erro.status_code, content={"detail": erro.mensagem})
+    conteudo = {"detail": erro.mensagem}
+    if erro.codigo:
+        conteudo["codigo"] = erro.codigo
+    return JSONResponse(status_code=erro.status_code, content=conteudo)
 
 
 for router in routers:

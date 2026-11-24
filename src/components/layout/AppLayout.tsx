@@ -1,8 +1,8 @@
 import { useState } from 'react'
 import { Link, NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { ArrowLeft, ClipboardList, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, ShieldCheck, Wrench, X } from 'lucide-react'
-import { AvisoPrivacidade } from '@/components/layout/AvisoPrivacidade'
+import { ArrowLeft, ClipboardList, FileDown, History, Home, LayoutDashboard, LogOut, MapPinned, Menu, User, Users, ShieldAlert, ShieldCheck, Wrench, X } from 'lucide-react'
 import { NotificationBell } from '@/components/layout/NotificationBell'
+import { AvisoTermos } from '@/components/privacidade/AvisoTermos'
 import { useAuth } from '@/hooks/useAuth'
 import { iniciais } from '@/utils/format'
 
@@ -15,6 +15,8 @@ const TITULOS: Record<string, string> = {
   '/admin': 'Painel de Monitoramento',
   '/admin/usuarios': 'Usuários',
   '/admin/areas-campus': 'Áreas do Campus',
+  '/admin/auditoria': 'Auditoria',
+  '/admin/relatorios': 'Relatórios',
 }
 
 export function AppLayout() {
@@ -41,8 +43,11 @@ export function AppLayout() {
           { to: '/admin', label: 'Painel de Monitoramento', icon: LayoutDashboard },
           { to: '/admin/usuarios', label: 'Usuários', icon: Users },
           { to: '/admin/areas-campus', label: 'Áreas do Campus', icon: MapPinned },
+          { to: '/admin/auditoria', label: 'Auditoria', icon: History },
+          { to: '/admin/relatorios', label: 'Relatórios', icon: FileDown },
         ]
       : []),
+    { to: '/privacidade', label: 'Privacidade e seus dados', icon: ShieldCheck },
   ]
 
   function sair() {
@@ -88,7 +93,7 @@ export function AppLayout() {
         <Outlet />
       </main>
 
-      <AvisoPrivacidade />
+      <AvisoTermos />
 
       {menuAberto && (
         <div className="fixed inset-0 z-30 flex" role="dialog" aria-modal="true">
@@ -116,16 +121,9 @@ export function AppLayout() {
                 <Icon size={18} /> {label}
               </NavLink>
             ))}
-            <Link
-              to="/privacidade"
-              onClick={() => setMenuAberto(false)}
-              className="mt-auto flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-ink hover:bg-surface"
-            >
-              <ShieldCheck size={18} /> Política de Privacidade
-            </Link>
             <button
               onClick={sair}
-              className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-sos-700 hover:bg-sos-50"
+              className="mt-auto flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-medium text-sos-700 hover:bg-sos-50"
             >
               <LogOut size={18} /> Sair
             </button>

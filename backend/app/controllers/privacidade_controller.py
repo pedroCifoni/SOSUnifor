@@ -1,25 +1,56 @@
+"""LGPD: ciência da Política de Privacidade e direitos do titular (art. 18)."""
+
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends
 
-from app.controllers.dependencias import UsuarioAtual, privacidade_service
-from app.dtos.privacidade_dto import CienciaPrivacidadeEntrada, SituacaoPrivacidadeResposta
+from app.controllers.dependencias import Administrador, UsuarioAtual, privacidade_service
+from app.dtos.privacidade_dto import (
+    AceiteTermosEntrada,
+    AnonimizacaoResposta,
+    DadosTitularResposta,
+    PedidoExclusaoResposta,
+    SolicitacaoExclusaoEntrada,
+    SolicitacaoExclusaoResposta,
+    TermosResposta,
+)
 from app.services.privacidade_service import PrivacidadeService
 
 
-router = APIRouter(prefix="/privacidade", tags=["Privacidade"])
+router = APIRouter(tags=["Privacidade (LGPD)"])
 Servico = Annotated[PrivacidadeService, Depends(privacidade_service)]
 
 
-@router.get("/situacao", response_model=SituacaoPrivacidadeResposta)
-def consultar_situacao(usuario: UsuarioAtual, servico: Servico) -> SituacaoPrivacidadeResposta:
-    """Diz se o usuário logado já declarou ciência da versão vigente da Política de Privacidade."""
-    return servico.situacao(usuario)
+@router.get("/me/termos", response_model=TermosResposta)
+def situacao_dos_termos(usuario: UsuarioAtual) -> TermosResposta:
+    return PrivacidadeService.situacao_dos_termos(usuario)
 
 
-@router.post("/ciencia", response_model=SituacaoPrivacidadeResposta)
-def registrar_ciencia(
-    dados: CienciaPrivacidadeEntrada, usuario: UsuarioAtual, servico: Servico
-) -> SituacaoPrivacidadeResposta:
-    """Registra data e versão da política de que o usuário declarou ciência."""
-    return servico.registrar_ciencia(dados, usuario)
+@router.post("/me/termos", response_model=TermosResposta)
+def aceitar_termos(dados: AceiteTermosEntrada, usuario: UsuarioAtual, servico: Servico) -> TermosResposta:
+    return servico.aceitar_termos(usuario, dados)
+
+
+@router.get("/me/dados", response_model=DadosTitularResposta)
+def exportar_dados(usuario: UsuarioAtual, servico: Servico) -> DadosTitularResposta:
+    """Cópia dos dados do próprio titular em JSON (acesso e portabilidade)."""
+    return servico.exportar_dados(usuario)
+
+
+@router.post("/me/solicitar-exclusao", response_model=SolicitacaoExclusaoResposta)
+def solicitar_exclusao(
+    dados: SolicitacaoExclusaoEntrada, usuario: UsuarioAtual, servico: Servico
+) -> SolicitacaoExclusaoResposta:
+    return servico.solicitar_exclusao(usuario, dados)
+
+
+# Declarada antes de qualquer /usuarios/{usuario_id} para "pedidos-exclusao" não ser lido como id.
+@router.get("/usuarios/pedidos-exclusao", response_model=list[PedidoExclusaoResposta])
+def listar_pedidos_de_exclusao(_: Administrador, servico: Servico) -> list[PedidoExclusaoResposta]:
+    return servico.listar_pedidos_de_exclusao()
+
+
+@router.post("/usuarios/{usuario_id}/anonimizar", response_model=AnonimizacaoResposta)
+def anonimizar(usuario_id: UUID, administrador: Administrador, servico: Servico) -> AnonimizacaoResposta:
+    return servico.anonimizar(usuario_id, administrador)

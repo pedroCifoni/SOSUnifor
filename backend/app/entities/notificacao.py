@@ -15,6 +15,7 @@ class Notificacao(Base):
     tipo: Mapped[str] = mapped_column(String(30), nullable=False)
     titulo: Mapped[str] = mapped_column(String(160), nullable=False)
     mensagem: Mapped[str] = mapped_column(String(300), nullable=False)
-    ocorrencia_id: Mapped[UUID] = mapped_column(Uuid(as_uuid=True), ForeignKey("ocorrencias.id"), nullable=False)
+    # Vazio nos avisos que não tratam de uma ocorrência (ex.: pedido de exclusão de dados).
+    ocorrencia_id: Mapped[UUID | None] = mapped_column(Uuid(as_uuid=True), ForeignKey("ocorrencias.id"), nullable=True)
     criada_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
     lida: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

@@ -8,7 +8,7 @@ class NotificacaoResposta(RespostaDTO):
     tipo: str
     titulo: str
     mensagem: str
-    ocorrencia_id: str
+    ocorrencia_id: str | None
     criada_em: str
     lida: bool
 
@@ -20,7 +20,7 @@ class NotificacaoResposta(RespostaDTO):
             tipo=notificacao.tipo,
             titulo=notificacao.titulo,
             mensagem=notificacao.mensagem,
-            ocorrencia_id=str(notificacao.ocorrencia_id),
+            ocorrencia_id=str(notificacao.ocorrencia_id) if notificacao.ocorrencia_id else None,
             criada_em=notificacao.criada_em.isoformat(),
             lida=notificacao.lida,
         )

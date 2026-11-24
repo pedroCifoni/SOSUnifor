@@ -157,10 +157,11 @@ A API cria estas contas quando elas ainda não existem. A senha inicial de todas
 
 ## E-mails
 
-A API envia e-mails via SMTP em três situações:
+A API envia e-mails via SMTP nestas situações:
 
-- **Boas-vindas:** quando o administrador cria uma nova conta, o usuário recebe um e-mail com seu acesso e a senha inicial.
-- **Esqueci minha senha:** envia um link de redefinição de uso único válido por **30 minutos**.
+- **Boas-vindas:** quando o administrador cria uma nova conta, o usuário recebe um e-mail com seu acesso, a senha inicial e o botão **Confirmar e-mail**.
+- **Confirmação de e-mail:** contas criadas pelo administrador só entram depois de confirmar o e-mail (link de uso único válido por **48 horas**; o login responde `403` com `"codigo": "email_nao_verificado"`). Um novo link pode ser pedido na tela de login (até 3 por hora) ou pelo administrador; trocar o e-mail de uma conta exige confirmar de novo. Contas que já existiam quando a verificação foi criada continuam entrando normalmente.
+- **Esqueci minha senha:** envia um link de redefinição de uso único válido por **30 minutos** (concluir a redefinição também confirma o e-mail).
 - **Aviso de senha alterada:** confirma para o usuário que a senha da conta foi modificada.
 
 Em desenvolvimento local, o `docker-compose.yml` sobe o **Mailpit** (`SMTP_HOST=localhost`, `SMTP_PORT=1025`). Tudo o que a API envia aparece em `http://localhost:8025`, sem enviar e-mails reais. Se `SMTP_HOST` ficar vazio em desenvolvimento, o conteúdo do e-mail é registrado apenas no log da API.
@@ -192,6 +193,7 @@ SMTP_REMETENTE=Uni SOS <seu-email@gmail.com>
 | `VITE_API_URL` | URL base da API, sem barra no final |
 | `VITE_SOS_USAR_GPS` | `true` faz o SOS usar o GPS real. Sem ela, o SOS usa um ponto fixo no Bloco C, para testes fora do campus. |
 | `VITE_MAP_STYLE_URL` | Opcional. Estilo de mapa do provedor da instituição. |
+| `VITE_CONTATO_DPO` | E-mail do encarregado de dados (LGPD) exibido na Política de Privacidade (`/privacidade`). Sem ela, aparece um endereço provisório marcado como "a definir". |
 
 Variáveis `VITE_*` entram no código no momento do build e ficam públicas. Depois de alterá-las na Vercel, faça um novo deploy.
 
@@ -219,12 +221,14 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 | `DB_POOL_TIMEOUT` | Segundos aguardando uma conexão livre do pool antes de responder erro. Padrão: `10`. |
 | `DB_POOL_RECYCLE` | Segundos até reciclar uma conexão (importante no Neon, que encerra conexões ociosas). Padrão: `300`. |
 | `DB_PREPARED_STATEMENTS` | Padrão: `true`. Defina como `false` se o pooler em modo transação (PgBouncer/Neon `-pooler`) reclamar de prepared statements. |
-| `RABBITMQ_URL` | Broker que distribui os avisos em tempo real entre as instâncias da API. Em dev: o RabbitMQ do docker-compose (`amqp://unisos:uni12345@localhost:5672/`); em produção: URL `amqps://` do CloudAMQP. Sem broker, cada processo avisa só as suas conexões. |
+| `RABBITMQ_URL` | Broker que distribui os avisos em tempo real entre as instâncias da API. Em dev: o RabbitMQ do docker-compose (`amqp://unisos:uni12345@localhost:5672/`); em produção: URL `amqps://` do CloudAMQP. Também transporta os eventos de domínio e de auditoria (exchange `unisos.eventos`, veja [docs/POA-e-eventos.md](docs/POA-e-eventos.md)). Sem broker, cada processo avisa só as suas conexões e a auditoria é gravada direto no banco. |
+| `DESEMPENHO_LIMITE_MS` | Opcional (padrão 500). Chamadas de service mais lentas que isso são registradas no log `app.desempenho` pelo aspecto `medir_desempenho`. |
 
 **E-mail (SMTP)**
 
 | Variável | Descrição |
 |---|---|
+| `BREVO_API_KEY` | Envia os e-mails pela API HTTPS da Brevo em vez de SMTP. **Obrigatória no plano gratuito do Render**, que bloqueia as portas de SMTP. O remetente (`SMTP_REMETENTE`) precisa estar verificado na Brevo. |
 | `SMTP_HOST` | Servidor SMTP (em dev: `localhost` para o Mailpit; em produção: ex. `smtp.gmail.com`). Sem ela, nada é enviado. |
 | `SMTP_PORT` | Porta SMTP (`1025` no Mailpit; `587` com STARTTLS). |
 | `SMTP_USUARIO` | Usuário de autenticação SMTP (vazio no Mailpit). |
@@ -232,6 +236,13 @@ Veja `backend/.env.example` para os valores padrão de desenvolvimento.
 | `SMTP_REMETENTE` | Remetente exibido nos e-mails (ex.: `Uni SOS <nao-responda@unifor.br>`). |
 | `SMTP_STARTTLS` | `true` para negociar TLS na porta 587 (`false` no Mailpit). |
 | `SMTP_SSL` | `true` para SMTP sobre SSL direto (porta 465). Padrão: `false`. |
+
+**Privacidade (LGPD)**: veja [docs/LGPD.md](docs/LGPD.md).
+
+| Variável | Descrição |
+|---|---|
+| `RETENCAO_NOTIFICACOES_LIDAS_DIAS` | Notificações já lidas são apagadas depois destes dias (rotina executada a cada subida da API). Padrão: `180`. |
+| `RETENCAO_TOKENS_VENCIDOS_HORAS` | Links de redefinição de senha vencidos são apagados depois destas horas além do vencimento. Padrão: `24`. |
 
 ## Deploy
 

@@ -1,12 +1,14 @@
 """Erros de negócio, independentes do FastAPI.
 
 Os services lançam estas exceções; o handler registrado em `main.py` as converte
-em respostas HTTP no formato `{"detail": "..."}`.
+em respostas HTTP no formato `{"detail": "..."}`. Quando o front precisa tratar um caso
+específico, a exceção define `codigo`, que vai junto: `{"detail": "...", "codigo": "..."}`.
 """
 
 
 class ErroAplicacao(Exception):
     status_code = 400
+    codigo: str | None = None
 
     def __init__(self, mensagem: str) -> None:
         super().__init__(mensagem)
@@ -25,12 +27,22 @@ class AcessoNegadoErro(ErroAplicacao):
     status_code = 403
 
 
+class EmailNaoVerificadoErro(AcessoNegadoErro):
+    """Senha correta, mas a conta ainda não confirmou o e-mail."""
+
+    codigo = "email_nao_verificado"
+
+
 class NaoEncontradoErro(ErroAplicacao):
     status_code = 404
 
 
 class ConflitoErro(ErroAplicacao):
     status_code = 409
+
+
+class MuitasTentativasErro(ErroAplicacao):
+    status_code = 429
 
 
 class ArquivoGrandeDemaisErro(ErroAplicacao):

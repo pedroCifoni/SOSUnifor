@@ -1,7 +1,7 @@
 from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.orm import Session
 
 from app.entities.token_redefinicao_senha import TokenRedefinicaoSenha
@@ -15,6 +15,9 @@ class TokenRedefinicaoSenhaRepository:
         """Busca e trava a linha até o fim da transação, para o mesmo link não ser usado duas vezes ao mesmo tempo."""
         consulta = select(TokenRedefinicaoSenha).where(TokenRedefinicaoSenha.token_hash == token_hash).with_for_update()
         return self.sessao.scalar(consulta)
+
+    def buscar_usuario_id_por_hash(self, token_hash: str) -> UUID | None:
+        return self.sessao.scalar(select(TokenRedefinicaoSenha.usuario_id).where(TokenRedefinicaoSenha.token_hash == token_hash))
 
     def contar_pedidos_desde(self, usuario_id: UUID, desde: datetime) -> int:
         consulta = (
@@ -35,3 +38,6 @@ class TokenRedefinicaoSenhaRepository:
     def adicionar(self, token: TokenRedefinicaoSenha) -> TokenRedefinicaoSenha:
         self.sessao.add(token)
         return token
+
+    def apagar_do_usuario(self, usuario_id: UUID) -> None:
+        self.sessao.execute(delete(TokenRedefinicaoSenha).where(TokenRedefinicaoSenha.usuario_id == usuario_id))

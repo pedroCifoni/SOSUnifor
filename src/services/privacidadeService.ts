@@ -1,18 +1,29 @@
 import { http } from '@/api/client'
-
-export interface SituacaoPrivacidade {
-  versaoVigente: string
-  versaoCiente: string | null
-  cienteEm: string | null
-  pendente: boolean
-}
+import type { PedidoExclusao, SituacaoTermos, SolicitacaoExclusao } from '@/models/privacidade'
 
 export const privacidadeService = {
-  situacao(): Promise<SituacaoPrivacidade> {
-    return http.get<SituacaoPrivacidade>('/privacidade/situacao')
+  situacaoTermos(): Promise<SituacaoTermos> {
+    return http.get<SituacaoTermos>('/me/termos')
   },
 
-  registrarCiencia(versao: string): Promise<SituacaoPrivacidade> {
-    return http.post<SituacaoPrivacidade>('/privacidade/ciencia', { versao })
+  aceitarTermos(versao: string): Promise<SituacaoTermos> {
+    return http.post<SituacaoTermos>('/me/termos', { versao })
+  },
+
+  /** Cópia dos dados do titular (JSON), para o botão "Baixar meus dados". */
+  exportarDados(): Promise<unknown> {
+    return http.get<unknown>('/me/dados')
+  },
+
+  solicitarExclusao(): Promise<SolicitacaoExclusao> {
+    return http.post<SolicitacaoExclusao>('/me/solicitar-exclusao', { confirmar: true })
+  },
+
+  listarPedidosExclusao(): Promise<PedidoExclusao[]> {
+    return http.get<PedidoExclusao[]>('/usuarios/pedidos-exclusao')
+  },
+
+  anonimizar(usuarioId: string): Promise<{ id: string; nome: string; anonimizadoEm: string }> {
+    return http.post(`/usuarios/${usuarioId}/anonimizar`)
   },
 }

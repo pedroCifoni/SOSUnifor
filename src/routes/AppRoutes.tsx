@@ -1,16 +1,19 @@
 import { lazy, Suspense } from 'react'
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { AppLayout } from '@/components/layout/AppLayout'
+import { AuditoriaPage } from '@/pages/Admin/AuditoriaPage'
 import { PainelAdminPage } from '@/pages/Admin/PainelAdminPage'
+import { RelatoriosPage } from '@/pages/Admin/RelatoriosPage'
 import { UsuariosPage } from '@/pages/Admin/UsuariosPage'
 import { HomePage } from '@/pages/Home/HomePage'
 import { EsqueciSenhaPage } from '@/pages/Login/EsqueciSenhaPage'
 import { LoginPage } from '@/pages/Login/LoginPage'
 import { RedefinirSenhaPage } from '@/pages/Login/RedefinirSenhaPage'
+import { VerificarEmailPage } from '@/pages/Login/VerificarEmailPage'
 import { MinhasOcorrenciasPage } from '@/pages/MinhasOcorrencias/MinhasOcorrenciasPage'
 import { NovaDenunciaPage } from '@/pages/NovaDenuncia/NovaDenunciaPage'
 import { PerfilPage } from '@/pages/Perfil/PerfilPage'
-import { PoliticaPrivacidadePage } from '@/pages/Privacidade/PoliticaPrivacidadePage'
+import { PrivacidadePage } from '@/pages/Privacidade/PrivacidadePage'
 import { NovoChamadoPage } from '@/pages/NovoChamado/NovoChamadoPage'
 import { SegurancaHomePage } from '@/pages/Home/SegurancaHomePage'
 import { TecnicoHomePage } from '@/pages/Home/TecnicoHomePage'
@@ -36,7 +39,8 @@ export function AppRoutes() {
       <Route path="/login" element={<LoginPage />} />
       <Route path="/esqueci-senha" element={<EsqueciSenhaPage />} />
       <Route path="/redefinir-senha" element={<RedefinirSenhaPage />} />
-      <Route path="/privacidade" element={<PoliticaPrivacidadePage />} />
+      <Route path="/verificar-email" element={<VerificarEmailPage />} />
+      <Route path="/privacidade" element={<PrivacidadePage />} />
 
       <Route element={<ProtectedRoute />}>
         <Route element={<AppLayout />}>
@@ -52,7 +56,9 @@ export function AppRoutes() {
 
           <Route element={<ProtectedRoute perfis={['admin']} />}>
             <Route path="admin" element={<PainelAdminPage />} />
+            <Route path="admin/relatorios" element={<RelatoriosPage />} />
             <Route path="admin/usuarios" element={<UsuariosPage />} />
+            <Route path="admin/auditoria" element={<AuditoriaPage />} />
             <Route path="admin/areas-campus" element={<Suspense fallback={<p className="text-sm text-muted">Carregando mapa…</p>}><AreasCampusPage /></Suspense>} />
           </Route>
         </Route>
