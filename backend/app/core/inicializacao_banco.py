@@ -320,15 +320,8 @@ def atualizar_credenciais_legadas() -> None:
     precisa_adicionar_nome = "nome" not in detalhes_colunas
     matricula_obrigatoria = detalhes_colunas.get("matricula", {}).get("nullable") is False
     precisa_adicionar_ultimo_acesso = "ultimo_acesso" not in detalhes_colunas
-    precisa_adicionar_ciencia_privacidade = "politica_privacidade_versao" not in detalhes_colunas
     precisa_normalizar_perfil = True
-    if (
-        not precisa_adicionar_nome
-        and not matricula_obrigatoria
-        and not precisa_adicionar_ultimo_acesso
-        and not precisa_adicionar_ciencia_privacidade
-        and not precisa_normalizar_perfil
-    ):
+    if not precisa_adicionar_nome and not matricula_obrigatoria and not precisa_adicionar_ultimo_acesso and not precisa_normalizar_perfil:
         return
 
     with engine.begin() as conexao:
@@ -349,11 +342,6 @@ def atualizar_credenciais_legadas() -> None:
                 conexao.execute(text("ALTER TABLE credentials ALTER COLUMN matricula DROP NOT NULL"))
             if precisa_adicionar_ultimo_acesso:
                 conexao.execute(text("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS ultimo_acesso TIMESTAMP WITH TIME ZONE"))
-            if precisa_adicionar_ciencia_privacidade:
-                conexao.execute(text("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS politica_privacidade_versao VARCHAR(20)"))
-                conexao.execute(
-                    text("ALTER TABLE credentials ADD COLUMN IF NOT EXISTS politica_privacidade_ciente_em TIMESTAMP WITH TIME ZONE")
-                )
             conexao.execute(text("UPDATE credentials SET tipo_usuario = 'usuario' WHERE LOWER(tipo_usuario) IN ('aluno', 'aluna', 'student')"))
         else:
             if precisa_adicionar_nome:
@@ -361,9 +349,6 @@ def atualizar_credenciais_legadas() -> None:
                 conexao.execute(text("UPDATE credentials SET nome = email WHERE nome IS NULL"))
             if precisa_adicionar_ultimo_acesso:
                 conexao.execute(text("ALTER TABLE credentials ADD COLUMN ultimo_acesso DATETIME"))
-            if precisa_adicionar_ciencia_privacidade:
-                conexao.execute(text("ALTER TABLE credentials ADD COLUMN politica_privacidade_versao VARCHAR(20)"))
-                conexao.execute(text("ALTER TABLE credentials ADD COLUMN politica_privacidade_ciente_em DATETIME"))
             conexao.execute(text("UPDATE credentials SET tipo_usuario = 'usuario' WHERE LOWER(tipo_usuario) IN ('aluno', 'aluna', 'student')"))
 
 

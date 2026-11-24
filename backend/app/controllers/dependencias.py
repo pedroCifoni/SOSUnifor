@@ -68,6 +68,8 @@ def ocorrencia_service(banco: Banco, tarefas: BackgroundTasks) -> OcorrenciaServ
 
 def privacidade_service(banco: Banco, tarefas: BackgroundTasks) -> PrivacidadeService:
     return PrivacidadeService(banco, avisar=_avisador(tarefas))
+
+
 def relatorio_service(banco: Banco) -> RelatorioService:
     return RelatorioService(banco)
 
