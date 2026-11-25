@@ -14,13 +14,22 @@ export interface Usuario {
   perfil: Perfil
   /** Só na visão do admin (GET /usuarios e respostas do cadastro); ausente nas listas públicas e no token. */
   emailVerificado?: boolean
+  /** Só na visão do admin: false para contas desativadas (lista "Desativadas"). */
+  ativo?: boolean
 }
 
-export interface DadosUsuario {
+/** O que o administrador pode alterar numa conta. E-mail e senha são do titular. */
+export interface EdicaoUsuario {
+  nome: string
+  perfil: Perfil
+}
+
+/** Formulário do autocadastro (o perfil não é escolhido: toda conta nova é "usuario"). */
+export interface DadosCadastro {
   nome: string
   email: string
-  perfil: Perfil
-  senha?: string
+  senha: string
+  versaoTermos: string
 }
 
 export interface Credenciais {

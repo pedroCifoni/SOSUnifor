@@ -14,6 +14,22 @@ export class ErroApi extends Error {
   }
 }
 
+/**
+ * Texto do erro devolvido pela API. Erros de validação (422) trazem `detail` como lista de problemas
+ * do Pydantic; usa a mensagem do primeiro, sem o prefixo técnico "Value error, ".
+ */
+function mensagemDoErro(erro: unknown, status: number): string {
+  const corpo = erro as { detail?: unknown; message?: unknown } | null
+  if (typeof corpo?.detail === 'string') return corpo.detail
+  if (Array.isArray(corpo?.detail)) {
+    const primeiro = corpo.detail[0] as { msg?: unknown } | undefined
+    if (typeof primeiro?.msg === 'string') return primeiro.msg.replace(/^Value error, /, '')
+    return 'Confira os dados informados.'
+  }
+  if (typeof corpo?.message === 'string') return corpo.message
+  return `Erro ${status}`
+}
+
 let aoNaoAutorizado: (() => void) | null = null
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
@@ -34,10 +50,10 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   if (!res.ok) {
     const erro = await res.json().catch(() => null)
     const codigo = typeof erro?.codigo === 'string' ? erro.codigo : undefined
-    // Sessão aberta de uma conta cujo e-mail deixou de estar confirmado (ex.: o admin trocou o e-mail):
+    // Sessão aberta de uma conta cujo e-mail deixou de estar confirmado:
     // encerra como uma sessão expirada; no próximo login a tela explica o que fazer.
     if (token && (res.status === 401 || codigo === 'email_nao_verificado')) aoNaoAutorizado?.()
-    throw new ErroApi(erro?.detail ?? erro?.message ?? `Erro ${res.status}`, res.status, codigo)
+    throw new ErroApi(mensagemDoErro(erro, res.status), res.status, codigo)
   }
   return (res.status === 204 ? undefined : await res.json()) as T
 }

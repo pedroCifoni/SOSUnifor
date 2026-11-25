@@ -33,11 +33,11 @@ O **administrador** faz a triagem de todas as ocorrências e encaminha cada uma 
 | Perfil | O que faz |
 |---|---|
 | Usuário | Aciona SOS, abre chamados e denúncias e acompanha as próprias ocorrências |
-| Administrador | Faz a triagem e o encaminhamento, gerencia usuários e desenha as áreas do campus |
+| Administrador | Faz a triagem e o encaminhamento, define o perfil das contas, desativa contas e desenha as áreas do campus |
 | Segurança | Recebe as ocorrências encaminhadas, aceita e conclui o atendimento |
 | Técnico | Recebe os chamados de suporte técnico encaminhados, aceita e conclui o atendimento |
 
-Não existe cadastro público: as contas são criadas pelo administrador no painel.
+As contas são criadas pelas próprias pessoas em **Criar conta** (`/cadastro`), apenas com e-mail `@unifor.br` (domínio exato: subdomínios e domínios parecidos são recusados). Toda conta nova nasce com o perfil **Usuário**; o administrador muda o perfil, corrige o nome, desativa e reativa contas (aba **Desativadas** em Usuários), mas não cria contas nem altera e-mail ou senha. Contas anonimizadas a pedido do titular (LGPD) não podem ser reativadas.
 
 ## Arquitetura
 
@@ -159,8 +159,7 @@ A API cria estas contas quando elas ainda não existem. A senha inicial de todas
 
 A API envia e-mails via SMTP nestas situações:
 
-- **Boas-vindas:** quando o administrador cria uma nova conta, o usuário recebe um e-mail com seu acesso, a senha inicial e o botão **Confirmar e-mail**.
-- **Confirmação de e-mail:** contas criadas pelo administrador só entram depois de confirmar o e-mail (link de uso único válido por **48 horas**; o login responde `403` com `"codigo": "email_nao_verificado"`). Um novo link pode ser pedido na tela de login (até 3 por hora) ou pelo administrador; trocar o e-mail de uma conta exige confirmar de novo. Contas que já existiam quando a verificação foi criada continuam entrando normalmente.
+- **Confirmação de e-mail:** ao criar a conta em `/cadastro`, a pessoa recebe um link de uso único válido por **48 horas**. Para ativar, ela abre o link **e digita a senha escolhida no cadastro** (isso impede que alguém cadastre o e-mail de outra pessoa com uma senha própria e espere a vítima confirmar). Antes disso o login responde `403` com `"codigo": "email_nao_verificado"`. Um novo link pode ser pedido na tela de login (até 3 por hora) ou pelo administrador. O cadastro responde sempre a mesma mensagem, exista ou não conta com o e-mail, e nenhum e-mail leva senha. Contas que já existiam quando a verificação foi criada continuam entrando normalmente.
 - **Esqueci minha senha:** envia um link de redefinição de uso único válido por **30 minutos** (concluir a redefinição também confirma o e-mail).
 - **Aviso de senha alterada:** confirma para o usuário que a senha da conta foi modificada.
 
@@ -279,7 +278,7 @@ Com `AMBIENTE=producao`, a API valida a configuração na subida (`validar_confi
 - `DATABASE_URL` — credencial exclusiva (não pode usar a senha local `uni12345`)
 - `CORS_ORIGINS` — apenas domínios HTTPS da aplicação (sem `http://localhost` ou `http://127.*`)
 - `FRONTEND_URL` — URL pública do front na Vercel, para que os links nos e-mails apontem para o endereço correto
-- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USUARIO`, `SMTP_SENHA`, `SMTP_REMETENTE`, `SMTP_STARTTLS` / `SMTP_SSL` — necessárias para envio de boas-vindas e redefinição de senha (em produção, sem `SMTP_HOST` o conteúdo do e-mail nunca vai para o log)
+- `SMTP_HOST`, `SMTP_PORT`, `SMTP_USUARIO`, `SMTP_SENHA`, `SMTP_REMETENTE`, `SMTP_STARTTLS` / `SMTP_SSL` — necessárias para envio da confirmação de cadastro e da redefinição de senha (em produção, sem `SMTP_HOST` o conteúdo do e-mail nunca vai para o log)
 
 ## Teste de carga
 

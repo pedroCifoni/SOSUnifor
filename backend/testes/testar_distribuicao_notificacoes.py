@@ -17,6 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # permite `import 
 
 BASE_URL = "http://127.0.0.1:8002"
 SENHA_TESTE = "123456"
+# Contas novas vêm do autocadastro, que exige ao menos 8 caracteres.
+SENHA_CONTA_NOVA = "senha-conectada-1"
 
 
 def requisitar(caminho: str, metodo: str = "GET", dados: dict | None = None, token: str | None = None):
@@ -34,8 +36,8 @@ def requisitar(caminho: str, metodo: str = "GET", dados: dict | None = None, tok
         raise AssertionError(f"{metodo} {caminho} retornou {erro.code}: {detalhe}") from erro
 
 
-def entrar(email: str) -> str:
-    resposta = requisitar("/auth/login", "POST", {"email": email, "senha": SENHA_TESTE})
+def entrar(email: str, senha: str = SENHA_TESTE) -> str:
+    resposta = requisitar("/auth/login", "POST", {"email": email, "senha": senha})
     return resposta["token"]
 
 
@@ -68,19 +70,20 @@ def testar_distribuicao() -> None:
     token_autor = entrar("eduardo.costa@unifor.br")
     token_seguranca = entrar("seguranca@unifor.br")
     token_tecnico = entrar("tecnico@unifor.br")
+    from app.core.privacidade import VERSAO_TERMOS
+
     requisitar(
-        "/usuarios",
+        "/auth/cadastro",
         "POST",
         {
             "nome": "Usuária conectada",
             "email": "conectada.teste@unifor.br",
-            "perfil": "usuario",
-            "senha": SENHA_TESTE,
+            "senha": SENHA_CONTA_NOVA,
+            "versao_termos": VERSAO_TERMOS,
         },
-        token_admin,
     )
     confirmar_email_no_banco("conectada.teste@unifor.br")
-    token_usuario_conectado = entrar("conectada.teste@unifor.br")
+    token_usuario_conectado = entrar("conectada.teste@unifor.br", SENHA_CONTA_NOVA)
 
     # A consulta autenticada marca as duas abas de usuário como ativas.
     requisitar("/notificacoes", token=token_autor)

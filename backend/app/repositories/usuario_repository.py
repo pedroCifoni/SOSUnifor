@@ -30,8 +30,14 @@ class UsuarioRepository:
     def buscar_por_email(self, email: str) -> Usuario | None:
         return self.sessao.scalar(select(Usuario).where(Usuario.email == email.lower().strip()))
 
-    def _aplicar_filtros_ativos(self, consulta, *, busca: str | None = None, perfil: str | None = None):
-        consulta = consulta.where(Usuario.ativo)
+    def _aplicar_filtros(
+        self, consulta, *, desativados: bool = False, busca: str | None = None, perfil: str | None = None
+    ):
+        if desativados:
+            # Contas anonimizadas (LGPD) também ficam inativas, mas não voltam: não aparecem aqui.
+            consulta = consulta.where(Usuario.ativo.is_(False), Usuario.anonimizado_em.is_(None))
+        else:
+            consulta = consulta.where(Usuario.ativo)
         if perfil is not None:
             consulta = consulta.where(Usuario.tipo_usuario == perfil)
         if busca is not None:
@@ -54,21 +60,25 @@ class UsuarioRepository:
                     )
         return consulta
 
-    def listar_ativos(
+    def listar(
         self,
         *,
+        desativados: bool = False,
         busca: str | None = None,
         perfil: str | None = None,
         limite: int = 50,
         pagina: int = 1,
     ) -> list[Usuario]:
+        """Contas ativas (padrão) ou desativadas que ainda podem ser reativadas, em ordem de nome."""
         deslocamento = (max(1, pagina) - 1) * limite
-        consulta = self._aplicar_filtros_ativos(select(Usuario), busca=busca, perfil=perfil)
+        consulta = self._aplicar_filtros(select(Usuario), desativados=desativados, busca=busca, perfil=perfil)
         consulta = consulta.order_by(Usuario.nome, Usuario.id).offset(deslocamento).limit(limite)
         return list(self.sessao.scalars(consulta))
 
-    def contar_ativos(self, *, busca: str | None = None, perfil: str | None = None) -> int:
-        consulta = self._aplicar_filtros_ativos(select(func.count()).select_from(Usuario), busca=busca, perfil=perfil)
+    def contar(self, *, desativados: bool = False, busca: str | None = None, perfil: str | None = None) -> int:
+        consulta = self._aplicar_filtros(
+            select(func.count()).select_from(Usuario), desativados=desativados, busca=busca, perfil=perfil
+        )
         return int(self.sessao.scalar(consulta) or 0)
 
     def listar_ativos_por_perfil(self, perfil: str) -> list[Usuario]:
@@ -80,16 +90,6 @@ class UsuarioRepository:
 
     def contar_ativos_por_perfil(self, perfil: str) -> int:
         consulta = select(func.count()).select_from(Usuario).where(Usuario.tipo_usuario == perfil, Usuario.ativo)
-        return self.sessao.scalar(consulta) or 0
-
-    def contar_admins_confirmados(self, exceto: UUID | None = None) -> int:
-        consulta = (
-            select(func.count())
-            .select_from(Usuario)
-            .where(Usuario.tipo_usuario == "admin", Usuario.ativo, Usuario.email_verificado_em.is_not(None))
-        )
-        if exceto is not None:
-            consulta = consulta.where(Usuario.id != exceto)
         return self.sessao.scalar(consulta) or 0
 
     def travar(self, usuario_id: UUID) -> None:

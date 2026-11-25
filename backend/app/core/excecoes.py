@@ -33,6 +33,12 @@ class EmailNaoVerificadoErro(AcessoNegadoErro):
     codigo = "email_nao_verificado"
 
 
+class SenhaNaoConfereErro(RegraDeNegocioErro):
+    """Link de confirmação válido, mas a senha informada não é a da conta."""
+
+    codigo = "senha_nao_confere"
+
+
 class NaoEncontradoErro(ErroAplicacao):
     status_code = 404
 

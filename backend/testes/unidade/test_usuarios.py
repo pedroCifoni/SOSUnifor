@@ -8,29 +8,60 @@ def _cabecalho(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
 
 
-def test_admin_cria_usuario_e_email_contem_senha(client: TestClient, token_admin: str, emails) -> None:
-    resposta = client.post(
-        "/usuarios",
-        headers=_cabecalho(token_admin),
-        json={"nome": "Nova Pessoa", "email": "nova@unifor.br", "perfil": "usuario", "senha": "minha-senha"},
-    )
-    assert resposta.status_code == 201, resposta.text
-    assert len(emails) == 1
-    assert "minha-senha" in (emails[0]["texto"] or "")
-
-
-def test_lote_com_erro_eh_atomico_e_nao_envia_email(client: TestClient, token_admin: str, emails) -> None:
-    dados = {
-        "criacoes": [
-            {"nome": "Uma Pessoa", "email": "repetido@unifor.br", "perfil": "usuario", "senha": "senha123"},
-            {"nome": "Outra Pessoa", "email": "repetido@unifor.br", "perfil": "usuario", "senha": "senha456"},
-        ]
-    }
-    resposta = client.post("/usuarios/lote", headers=_cabecalho(token_admin), json=dados)
-    assert resposta.status_code == 409, resposta.text
+def test_admin_nao_cria_contas(client: TestClient, token_admin: str, emails) -> None:
+    """As contas nascem pelo autocadastro (POST /auth/cadastro); o admin não tem mais rota de criação."""
+    dados = {"nome": "Nova Pessoa", "email": "nova@unifor.br", "perfil": "admin", "senha": "minha-senha"}
+    assert client.post("/usuarios", headers=_cabecalho(token_admin), json=dados).status_code == 405
+    lote = client.post("/usuarios/lote", headers=_cabecalho(token_admin), json={"criacoes": [dados]})
+    assert lote.status_code == 422
     assert emails == []
     lista = client.get("/usuarios", headers=_cabecalho(token_admin)).json()
-    assert not any(usuario["email"] == "repetido@unifor.br" for usuario in lista)
+    assert not any(usuario["email"] == "nova@unifor.br" for usuario in lista)
+
+
+def test_admin_so_altera_nome_e_perfil(client: TestClient, token_admin: str, criar_usuario) -> None:
+    pessoa = criar_usuario("pessoa@unifor.br", senha="senha123", nome="Nome Antigo")
+
+    # E-mail e senha são do titular: o admin não os altera (422, nada é aplicado).
+    for campos in ({"email": "outro@unifor.br"}, {"senha": "nova-senha-1"}, {"nome": "Outro", "email": "y@unifor.br"}):
+        recusado = client.put(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json=campos)
+        assert recusado.status_code == 422, recusado.text
+    lote = client.post(
+        "/usuarios/lote",
+        headers=_cabecalho(token_admin),
+        json={"atualizacoes": [{"id": str(pessoa.id), "senha": "nova-senha-1"}]},
+    )
+    assert lote.status_code == 422
+
+    aceito = client.put(
+        f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json={"nome": "  Nome   Corrigido ", "perfil": "tecnico"}
+    )
+    assert aceito.status_code == 200, aceito.text
+    assert aceito.json()["nome"] == "Nome Corrigido"
+    assert aceito.json()["perfil"] == "tecnico"
+    assert aceito.json()["email"] == "pessoa@unifor.br"
+    # A senha continua a mesma.
+    assert token_de(client, "pessoa@unifor.br", "senha123")
+
+
+def test_lote_com_erro_eh_atomico(client: TestClient, token_admin: str, criar_usuario) -> None:
+    from uuid import uuid4
+
+    pessoa = criar_usuario("pessoa@unifor.br", nome="Nome Original")
+    resposta = client.post(
+        "/usuarios/lote",
+        headers=_cabecalho(token_admin),
+        json={"atualizacoes": [{"id": str(pessoa.id), "nome": "Nome Alterado"}], "exclusoes": [str(uuid4())]},
+    )
+    assert resposta.status_code == 404, resposta.text
+    lista = client.get("/usuarios", params={"busca": "pessoa@unifor.br"}, headers=_cabecalho(token_admin)).json()
+    assert [u["nome"] for u in lista] == ["Nome Original"]
+
+
+def test_admin_desativa_conta_e_ela_nao_entra_mais(client: TestClient, token_admin: str, criar_usuario) -> None:
+    pessoa = criar_usuario("pessoa@unifor.br", senha="senha123")
+    assert client.delete(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin)).status_code == 204
+    assert client.post("/auth/login", json={"email": "pessoa@unifor.br", "senha": "senha123"}).status_code == 401
 
 
 def test_busca_por_nome_email_sem_acento_e_maiusculas(
@@ -157,3 +188,64 @@ def test_limite_e_paginacao_respeitados_e_ordenados_por_nome(
     limite_alto = client.get("/usuarios", params={"limite": 500}, headers=_cabecalho(token_admin))
     assert limite_alto.status_code == 200
     assert len(limite_alto.json()) <= 200
+
+
+def test_admin_lista_desativadas_e_reativa_conta(client: TestClient, token_admin: str, criar_usuario) -> None:
+    pessoa = criar_usuario("pessoa@unifor.br", senha="senha123", nome="Pessoa Desativada", perfil="tecnico")
+    criar_usuario("ativa@unifor.br", nome="Pessoa Ativa")
+    assert client.delete(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin)).status_code == 204
+
+    ativos = client.get("/usuarios", headers=_cabecalho(token_admin)).json()
+    assert all(u["ativo"] for u in ativos) and "pessoa@unifor.br" not in [u["email"] for u in ativos]
+    desativadas = client.get("/usuarios", params={"situacao": "desativados"}, headers=_cabecalho(token_admin))
+    assert desativadas.status_code == 200, desativadas.text
+    assert [(u["email"], u["ativo"]) for u in desativadas.json()] == [("pessoa@unifor.br", False)]
+    resumo = client.get("/usuarios/resumo", params={"situacao": "desativados"}, headers=_cabecalho(token_admin))
+    assert resumo.json() == {"total": 1}
+    assert client.get("/usuarios", params={"situacao": "todos"}, headers=_cabecalho(token_admin)).status_code == 422
+
+    reativada = client.post(f"/usuarios/{pessoa.id}/reativar", headers=_cabecalho(token_admin))
+    assert reativada.status_code == 200, reativada.text
+    # Volta como era: mesmo perfil, e-mail e senha.
+    assert reativada.json()["ativo"] is True and reativada.json()["perfil"] == "tecnico"
+    assert token_de(client, "pessoa@unifor.br", "senha123")
+    assert client.get("/usuarios", params={"situacao": "desativados"}, headers=_cabecalho(token_admin)).json() == []
+
+    # Reativar de novo, ou uma conta que não existe, não faz nada.
+    assert client.post(f"/usuarios/{pessoa.id}/reativar", headers=_cabecalho(token_admin)).status_code == 400
+    from uuid import uuid4
+
+    assert client.post(f"/usuarios/{uuid4()}/reativar", headers=_cabecalho(token_admin)).status_code == 404
+
+
+def test_reativar_exige_admin_e_fica_na_auditoria(client: TestClient, token_admin: str, criar_usuario) -> None:
+    from sqlalchemy import select
+
+    from app.core.database import FabricaSessao
+    from app.entities.registro_auditoria import RegistroAuditoria
+
+    pessoa = criar_usuario("pessoa@unifor.br", ativo=False)
+    criar_usuario("comum@unifor.br", senha="senha123")
+    token_comum = token_de(client, "comum@unifor.br", "senha123")
+    assert client.post(f"/usuarios/{pessoa.id}/reativar", headers=_cabecalho(token_comum)).status_code == 403
+    assert client.get("/usuarios", params={"situacao": "desativados"}, headers=_cabecalho(token_comum)).status_code == 403
+    assert client.post(f"/usuarios/{pessoa.id}/reativar").status_code == 401
+
+    assert client.post(f"/usuarios/{pessoa.id}/reativar", headers=_cabecalho(token_admin)).status_code == 200
+    with FabricaSessao() as sessao:
+        registros = list(
+            sessao.scalars(select(RegistroAuditoria).where(RegistroAuditoria.tipo == "auditoria.usuario.reativar"))
+        )
+    sucesso = [r for r in registros if r.resultado == "sucesso"]
+    assert len(sucesso) == 1 and sucesso[0].entidade_id == str(pessoa.id)
+
+
+def test_conta_anonimizada_nao_aparece_nem_volta(client: TestClient, token_admin: str, criar_usuario) -> None:
+    pessoa = criar_usuario("titular@unifor.br")
+    assert client.post(f"/usuarios/{pessoa.id}/anonimizar", headers=_cabecalho(token_admin)).status_code == 200
+
+    desativadas = client.get("/usuarios", params={"situacao": "desativados"}, headers=_cabecalho(token_admin)).json()
+    assert str(pessoa.id) not in [u["id"] for u in desativadas]
+    recusada = client.post(f"/usuarios/{pessoa.id}/reativar", headers=_cabecalho(token_admin))
+    assert recusada.status_code == 400
+    assert "anonimizada" in recusada.json()["detail"]

@@ -40,45 +40,15 @@ class EmailService:
     def __init__(self, agendar: AgendarTarefa = executar_agora) -> None:
         self.agendar = agendar
 
-    def enviar_boas_vindas(self, nome: str, email: str, senha: str, token_verificacao: str) -> None:
-        link_login = _link_do_sistema("/login")
-        link_confirmacao = _link_do_sistema(f"/verificar-email?token={token_verificacao}")
-        horas = configuracoes.verificacao_email_expira_horas
-        texto = (
-            f"Olá, {nome}!\n\n"
-            "Uma conta foi criada para você no Uni SOS.\n\n"
-            f"E-mail de acesso: {email}\n"
-            f"Senha: {senha}\n\n"
-            "Antes do primeiro acesso, confirme o seu e-mail neste link:\n"
-            f"{link_confirmacao}\n\n"
-            f"O link vale por {horas} horas. Depois de confirmar, entre em: {link_login}\n\n"
-            "Por segurança, não compartilhe esta senha. Se quiser trocá-la, use a opção "
-            "\"Esqueci minha senha\" na tela de login."
-        )
-        html = _html(
-            "Sua conta no Uni SOS foi criada",
-            f"""<p>Olá, {escape(nome)}!</p>
-<p>Uma conta foi criada para você no Uni SOS. Use os dados abaixo para entrar:</p>
-<table style="background:#f4f6fb;border-radius:4px;padding:16px;width:100%;font-size:14px">
-<tr><td style="color:#6b7280;padding:4px 0">E-mail</td><td><strong>{escape(email)}</strong></td></tr>
-<tr><td style="color:#6b7280;padding:4px 0">Senha</td><td><strong style="font-family:monospace;font-size:16px">{escape(senha)}</strong></td></tr>
-</table>
-<p>Antes do primeiro acesso, confirme que este e-mail é seu:</p>
-{_botao(link_confirmacao, "Confirmar e-mail")}
-<p style="font-size:13px;color:#6b7280">O link vale por {horas} horas e só pode ser usado uma vez. Depois de confirmar, entre em
-<a href="{escape(link_login)}" style="color:#0b2a6f">{escape(link_login)}</a>.<br>
-Por segurança, não compartilhe esta senha. Se quiser trocá-la, use a opção "Esqueci minha senha" na tela de login.</p>""",
-        )
-        self.agendar(enviar_email, email, "Sua conta no Uni SOS foi criada", texto, html)
-
     def enviar_confirmacao_email(self, nome: str, email: str, token: str) -> None:
-        """Novo link de confirmação: reenvio pedido pela pessoa ou pelo admin, ou e-mail da conta alterado."""
+        """Link de confirmação: conta recém-cadastrada ou reenvio pedido pela pessoa ou pelo admin."""
         link = _link_do_sistema(f"/verificar-email?token={token}")
         horas = configuracoes.verificacao_email_expira_horas
         texto = (
             f"Olá, {nome}!\n\n"
             "Confirme que este e-mail é seu para continuar usando o Uni SOS.\n\n"
-            f"Para confirmar, acesse: {link}\n\n"
+            f"Para confirmar, acesse: {link}\n"
+            "Ao abrir o link, digite a senha que você escolheu no cadastro.\n\n"
             f"O link vale por {horas} horas e só pode ser usado uma vez.\n"
             "Se você não reconhece esta conta, ignore este e-mail."
         )
@@ -87,6 +57,7 @@ Por segurança, não compartilhe esta senha. Se quiser trocá-la, use a opção 
             f"""<p>Olá, {escape(nome)}!</p>
 <p>Confirme que este e-mail é seu para continuar usando o Uni SOS.</p>
 {_botao(link, "Confirmar e-mail")}
+<p>Ao abrir o link, digite a senha que você escolheu no cadastro.</p>
 <p style="font-size:13px;color:#6b7280">O link vale por {horas} horas e só pode ser usado uma vez.<br>
 Se você não reconhece esta conta, ignore este e-mail.</p>""",
         )

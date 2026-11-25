@@ -43,7 +43,7 @@ Este documento registra como o Uni SOS trata dados pessoais e o que foi constru�
 |---|---|
 | I - Confirmação da existência de tratamento | Política de Privacidade (`/privacidade`) e "Baixar meus dados" em Meu Perfil. |
 | II - Acesso aos dados | Meu Perfil > **Baixar meus dados** (`GET /me/dados`): perfil (inclusive a matrícula das contas antigas), ocorrências que a pessoa abriu (com histórico), notificações recebidas e datas de ciência da política. |
-| III - Correção | O titular pede à administração; o admin corrige nome/e-mail em **Usuários**. |
+| III - Correção | O titular pede à administração; o admin corrige o nome em **Usuários**. O e-mail institucional não é alterado pelo admin (é comprovado pelo próprio titular no cadastro). |
 | IV - Anonimização, bloqueio ou eliminação de dados desnecessários | Retenção automática (seção 4) e anonimização a pedido (direito VI). |
 | V - Portabilidade | O mesmo arquivo `.json` do direito II, em formato estruturado e aberto. |
 | VI - Eliminação | Meu Perfil > **Solicitar exclusão dos meus dados** (`POST /me/solicitar-exclusao`, com confirmação). A data do pedido é gravada (o Perfil a mostra via `GET /me/termos`, campo `exclusaoSolicitadaEm`) e os administradores recebem uma notificação **sem o nome do titular** (quem pediu aparece só na lista de pedidos), para que nada identifique a pessoa depois da anonimização. Em **Usuários > Pedidos de exclusão**, o admin clica em **Anonimizar** (`POST /usuarios/{id}/anonimizar`). |

@@ -40,6 +40,14 @@ def _id_do_usuario(email: str) -> UUID:
         return sessao.scalar(select(Usuario.id).where(Usuario.email == email))
 
 
+def _cadastrar(client: TestClient, email: str, senha: str = "SENHA-CADASTRO-1", nome: str = "Pessoa Nova"):
+    from app.core.privacidade import VERSAO_TERMOS
+
+    return client.post(
+        "/auth/cadastro", json={"nome": nome, "email": email, "senha": senha, "versao_termos": VERSAO_TERMOS}
+    )
+
+
 # ---------- aspectos aplicados aos services ----------
 def test_criar_ocorrencia_audita_e_publica_evento_sem_conteudo_da_denuncia(client: TestClient, criar_usuario) -> None:
     autor = criar_usuario("autor@unifor.br", nome="Autor")
@@ -109,50 +117,49 @@ def test_encaminhar_e_mudar_status_sao_auditados(client: TestClient, criar_usuar
     assert len(_registros("ocorrencia.encaminhada")) == len(_registros("ocorrencia.status_alterado")) == 1
 
 
-def test_erro_de_negocio_e_auditado_com_resultado_erro_sem_senha(client: TestClient, token_admin: str) -> None:
-    dados = {"nome": "Repetida", "email": "admin@unifor.br", "perfil": "usuario", "senha": "SENHA-SECRETA-1"}
-    resposta = client.post("/usuarios", headers=_cabecalho(token_admin), json=dados)
-    assert resposta.status_code == 409
+def test_erro_de_negocio_e_auditado_com_resultado_erro_sem_valores(client: TestClient, token_admin: str) -> None:
+    admin_id = _id_do_usuario("admin@unifor.br")
+    resposta = client.put(
+        f"/usuarios/{admin_id}", headers=_cabecalho(token_admin), json={"nome": "NOME-SECRETO", "perfil": "usuario"}
+    )
+    assert resposta.status_code == 400
 
-    [registro] = _registros("auditoria.usuario.criar")
+    [registro] = _registros("auditoria.usuario.editar")
     assert registro.resultado == "erro"
-    assert registro.ator_id == _id_do_usuario("admin@unifor.br")  # veio do contexto da requisição
-    assert "ConflitoErro" in registro.dados["erro"]
-    assert registro.dados["detalhes"] == {"perfil": "usuario"}
-    assert "SENHA-SECRETA-1" not in json.dumps(registro.dados)
+    assert registro.ator_id == admin_id
+    assert "RegraDeNegocioErro" in registro.dados["erro"]
+    assert registro.dados["detalhes"] == {"campos_alterados": "nome,perfil"}
+    assert "NOME-SECRETO" not in json.dumps(registro.dados)
     # A operação falhou: nenhum evento de domínio é publicado.
     assert not [r for r in _registros() if not r.tipo.startswith("auditoria.")]
 
-
-def test_edicao_exclusao_e_lote_sao_auditados_sem_valores_sensiveis(client: TestClient, token_admin: str) -> None:
-    criado = client.post(
-        "/usuarios",
-        headers=_cabecalho(token_admin),
-        json={"nome": "Pessoa", "email": "pessoa@unifor.br", "perfil": "usuario", "senha": "SENHA-INICIAL"},
-    ).json()
+def test_edicao_exclusao_e_lote_sao_auditados_sem_valores_sensiveis(
+    client: TestClient, token_admin: str, criar_usuario
+) -> None:
+    pessoa = criar_usuario("pessoa@unifor.br", nome="Nome Original")
+    outra = criar_usuario("outra@unifor.br")
     editado = client.put(
-        f"/usuarios/{criado['id']}", headers=_cabecalho(token_admin), json={"senha": "SENHA-NOVA-99", "nome": "Outro Nome"}
+        f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json={"nome": "NOME-NOVO-1", "perfil": "tecnico"}
     )
-    assert editado.status_code == 200
+    assert editado.status_code == 200, editado.text
     lote = client.post(
         "/usuarios/lote",
         headers=_cabecalho(token_admin),
-        json={"criacoes": [{"nome": "Lote", "email": "lote@unifor.br", "perfil": "usuario", "senha": "SENHA-LOTE"}]},
+        json={"atualizacoes": [{"id": str(outra.id), "nome": "NOME-LOTE-1"}]},
     )
-    assert lote.status_code == 200
-    assert client.delete(f"/usuarios/{criado['id']}", headers=_cabecalho(token_admin)).status_code == 204
+    assert lote.status_code == 200, lote.text
+    assert client.delete(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin)).status_code == 204
 
-    [edicao] = _registros("auditoria.usuario.editar")
-    assert edicao.entidade_id == criado["id"]
-    assert edicao.dados["detalhes"] == {"campos_alterados": "nome,senha"}
+    edicoes = {r.entidade_id: r for r in _registros("auditoria.usuario.editar")}
+    assert edicoes[str(pessoa.id)].dados["detalhes"] == {"campos_alterados": "nome,perfil"}
+    assert edicoes[str(outra.id)].dados["detalhes"] == {"campos_alterados": "nome"}
     [em_lote] = _registros("auditoria.usuario.salvar_em_lote")
-    assert em_lote.dados["detalhes"] == {"criacoes": 1, "atualizacoes": 0, "exclusoes": 0}
+    assert em_lote.dados["detalhes"] == {"atualizacoes": 1, "exclusoes": 0}
     [exclusao] = _registros("auditoria.usuario.excluir")
-    assert exclusao.resultado == "sucesso" and exclusao.entidade_id == criado["id"]
+    assert exclusao.resultado == "sucesso" and exclusao.entidade_id == str(pessoa.id)
     tudo = json.dumps([r.dados for r in _registros()])
-    for segredo in ("SENHA-INICIAL", "SENHA-NOVA-99", "SENHA-LOTE", "pessoa@unifor.br", "lote@unifor.br"):
+    for segredo in ("NOME-NOVO-1", "NOME-LOTE-1", "pessoa@unifor.br", "outra@unifor.br"):
         assert segredo not in tudo
-
 
 def test_redefinir_senha_auditada_com_o_dono_do_link_e_sem_token(client: TestClient, emails, monkeypatch) -> None:
     from app.services.auth_service import AuthService
@@ -180,72 +187,54 @@ def test_redefinir_senha_auditada_com_o_dono_do_link_e_sem_token(client: TestCli
     assert token not in tudo and "NOVA-SENHA-7" not in tudo and "OUTRA-SENHA-8" not in tudo and "link-falso" not in tudo
 
 
-def test_lote_de_usuarios_audita_cada_conta_afetada(client: TestClient, token_admin: str) -> None:
+def test_lote_de_usuarios_audita_cada_conta_afetada(client: TestClient, token_admin: str, criar_usuario) -> None:
     """O painel de usuários só usa POST /usuarios/lote: a trilha precisa dizer QUAIS contas mudaram."""
     cabecalho = {**_cabecalho(token_admin), "X-Request-ID": "req-lote-1"}
-    editar = client.post(
-        "/usuarios", headers=_cabecalho(token_admin), json={"nome": "Editar", "email": "editar@unifor.br", "perfil": "usuario", "senha": "senha123"}
-    ).json()
-    excluir = client.post(
-        "/usuarios", headers=_cabecalho(token_admin), json={"nome": "Excluir", "email": "excluir@unifor.br", "perfil": "usuario", "senha": "senha123"}
-    ).json()
+    editar = criar_usuario("editar@unifor.br", nome="Editar")
+    excluir = criar_usuario("excluir@unifor.br", nome="Excluir")
     lote = client.post(
         "/usuarios/lote",
         headers=cabecalho,
         json={
-            "criacoes": [{"nome": "Nova", "email": "nova-lote@unifor.br", "perfil": "tecnico", "senha": "SENHA-LOTE"}],
-            "atualizacoes": [{"id": editar["id"], "perfil": "admin", "senha": None, "nome": "Novo Nome"}],
-            "exclusoes": [excluir["id"]],
+            "atualizacoes": [{"id": str(editar.id), "perfil": "admin", "nome": "Novo Nome"}],
+            "exclusoes": [str(excluir.id)],
         },
     )
     assert lote.status_code == 200, lote.text
-    [criado_id] = lote.json()["idsCriados"]
-    assert criado_id == str(_id_do_usuario("nova-lote@unifor.br"))
+    assert lote.json() == {"atualizadas": 1, "excluidas": 1}
 
     admin_id = _id_do_usuario("admin@unifor.br")
     do_lote = [r for r in _registros() if r.request_id == "req-lote-1"]
     por_acao = {r.tipo: r for r in do_lote}
     assert set(por_acao) == {
         "auditoria.usuario.salvar_em_lote",
-        "auditoria.usuario.criar",
         "auditoria.usuario.editar",
         "auditoria.usuario.excluir",
     }
     assert all(r.ator_id == admin_id and r.resultado == "sucesso" and r.entidade == "usuario" for r in do_lote)
-    assert por_acao["auditoria.usuario.criar"].entidade_id == criado_id
-    assert por_acao["auditoria.usuario.criar"].dados["detalhes"] == {"perfil": "tecnico"}
-    assert por_acao["auditoria.usuario.editar"].entidade_id == editar["id"]
+    assert por_acao["auditoria.usuario.editar"].entidade_id == str(editar.id)
     assert por_acao["auditoria.usuario.editar"].dados["detalhes"] == {"campos_alterados": "nome,perfil"}
-    assert por_acao["auditoria.usuario.excluir"].entidade_id == excluir["id"]
-    assert "SENHA-LOTE" not in json.dumps([r.dados for r in do_lote]) and "nova-lote" not in json.dumps([r.dados for r in do_lote])
+    assert por_acao["auditoria.usuario.excluir"].entidade_id == str(excluir.id)
+    assert "Novo Nome" not in json.dumps([r.dados for r in do_lote])
 
-
-def test_lote_que_falha_nao_registra_itens(client: TestClient, token_admin: str) -> None:
+def test_lote_que_falha_nao_registra_itens(client: TestClient, token_admin: str, criar_usuario) -> None:
+    editar = criar_usuario("editar@unifor.br")
     resposta = client.post(
         "/usuarios/lote",
         headers={**_cabecalho(token_admin), "X-Request-ID": "req-lote-2"},
-        json={
-            "criacoes": [{"nome": "Nova", "email": "nova-falha@unifor.br", "perfil": "usuario", "senha": "senha123"}],
-            "exclusoes": [str(uuid4())],
-        },
+        json={"atualizacoes": [{"id": str(editar.id), "nome": "Novo Nome"}], "exclusoes": [str(uuid4())]},
     )
     assert resposta.status_code == 404
     [registro] = [r for r in _registros() if r.request_id == "req-lote-2"]
     assert (registro.tipo, registro.resultado) == ("auditoria.usuario.salvar_em_lote", "erro")
 
-
-def test_falha_na_auditoria_nao_derruba_a_operacao(client: TestClient, token_admin: str, monkeypatch) -> None:
+def test_falha_na_auditoria_nao_derruba_a_operacao(client: TestClient, monkeypatch) -> None:
     def falhar(*_args, **_kwargs):
         raise RuntimeError("banco de auditoria fora do ar")
 
     monkeypatch.setattr("app.services.auditoria_service.gravar_evento", falhar)
-    resposta = client.post(
-        "/usuarios",
-        headers=_cabecalho(token_admin),
-        json={"nome": "Nova", "email": "nova@unifor.br", "perfil": "usuario", "senha": "senha123"},
-    )
-    assert resposta.status_code == 201
-
+    assert _cadastrar(client, "nova@unifor.br").status_code == 202
+    assert _id_do_usuario("nova@unifor.br") is not None
 
 def test_com_broker_o_evento_vai_para_a_fila_e_nao_para_o_banco(client: TestClient, token_admin: str, monkeypatch) -> None:
     publicados: list[Evento] = []
@@ -554,11 +543,7 @@ def test_auditoria_so_para_admin(client: TestClient, criar_usuario) -> None:
 
 def test_auditoria_paginada_por_cursor_e_filtrada(client: TestClient, token_admin: str) -> None:
     for indice in range(3):
-        client.post(
-            "/usuarios",
-            headers=_cabecalho(token_admin),
-            json={"nome": f"P{indice}", "email": f"p{indice}@unifor.br", "perfil": "usuario", "senha": "senha123"},
-        )
+        assert _cadastrar(client, f"p{indice}@unifor.br", nome=f"Pessoa {indice}").status_code == 202
     client.delete(f"/usuarios/{uuid4()}", headers=_cabecalho(token_admin))
 
     pagina = client.get("/auditoria?limite=2", headers=_cabecalho(token_admin)).json()
@@ -571,8 +556,10 @@ def test_auditoria_paginada_por_cursor_e_filtrada(client: TestClient, token_admi
     ).json()
     assert len(resto) == 2 and not {r["id"] for r in resto} & {r["id"] for r in pagina}
 
-    criacoes = client.get("/auditoria", headers=_cabecalho(token_admin), params={"tipo": "auditoria.usuario.criar"}).json()
-    assert len(criacoes) == 3 and all(r["acao"] == "usuario.criar" for r in criacoes)
+    cadastros = client.get(
+        "/auditoria", headers=_cabecalho(token_admin), params={"tipo": "auditoria.usuario.cadastrar"}
+    ).json()
+    assert len(cadastros) == 3 and all(r["acao"] == "usuario.cadastrar" for r in cadastros)
     futuro = client.get("/auditoria", headers=_cabecalho(token_admin), params={"desde": "2999-01-01T00:00:00Z"}).json()
     assert futuro == []
     periodo_invertido = client.get(

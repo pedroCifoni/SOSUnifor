@@ -1,12 +1,14 @@
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.dtos.base import RespostaDTO, validar_email
+from app.dtos.base import RespostaDTO
 from app.entities.usuario import Usuario
 
 
 Perfil = Literal["usuario", "seguranca", "tecnico", "admin"]
+# Filtro da lista do admin: contas ativas ou desativadas (que podem ser reativadas).
+SituacaoConta = Literal["ativos", "desativados"]
 
 LIMITE_PADRAO_USUARIOS = 50
 LIMITE_MAXIMO_USUARIOS = 200
@@ -17,28 +19,25 @@ def ajustar_limite_usuarios(limite: int) -> int:
 
 
 # ---------- entrada ----------
-class UsuarioEntrada(BaseModel):
-    nome: str = Field(min_length=1, max_length=150)
-    email: str = Field(min_length=5, max_length=150)
-    perfil: Perfil
-    senha: str = Field(min_length=6, max_length=100)
-
-    @field_validator("email")
-    @classmethod
-    def normalizar_email(cls, email: str) -> str:
-        return validar_email(email)
-
-
+# As contas são criadas pelo próprio titular (POST /auth/cadastro). O administrador só muda o perfil,
+# corrige o nome (LGPD, art. 18, III) e desativa contas. E-mail e senha são do titular: o admin não os
+# altera (o e-mail é comprovado pelo dono; a senha só ele conhece). Campos extras são recusados (422),
+# para um cliente antigo que ainda envie "email" ou "senha" não achar que a mudança foi aplicada.
 class UsuarioAtualizacao(BaseModel):
-    nome: str | None = Field(default=None, min_length=1, max_length=150)
-    email: str | None = Field(default=None, min_length=5, max_length=150)
-    perfil: Perfil | None = None
-    senha: str | None = Field(default=None, min_length=6, max_length=100)
+    model_config = ConfigDict(extra="forbid")
 
-    @field_validator("email")
+    nome: str | None = Field(default=None, min_length=1, max_length=150)
+    perfil: Perfil | None = None
+
+    @field_validator("nome")
     @classmethod
-    def normalizar_email(cls, email: str | None) -> str | None:
-        return None if email is None else validar_email(email)
+    def normalizar_nome(cls, nome: str | None) -> str | None:
+        if nome is None:
+            return None
+        nome_limpo = " ".join(nome.split())
+        if not nome_limpo:
+            raise ValueError("Informe o nome.")
+        return nome_limpo
 
 
 class UsuarioAtualizacaoLote(UsuarioAtualizacao):
@@ -46,7 +45,8 @@ class UsuarioAtualizacaoLote(UsuarioAtualizacao):
 
 
 class UsuarioLoteEntrada(BaseModel):
-    criacoes: list[UsuarioEntrada] = Field(default_factory=list, max_length=100)
+    model_config = ConfigDict(extra="forbid")
+
     atualizacoes: list[UsuarioAtualizacaoLote] = Field(default_factory=list, max_length=100)
     exclusoes: list[str] = Field(default_factory=list, max_length=100)
 
@@ -79,6 +79,7 @@ class UsuarioAdminResposta(UsuarioResposta):
     """Visão do administrador: inclui dados internos de gestão, como a confirmação do e-mail."""
 
     email_verificado: bool
+    ativo: bool
 
     @classmethod
     def de_entidade(cls, usuario: Usuario) -> "UsuarioAdminResposta":
@@ -88,14 +89,13 @@ class UsuarioAdminResposta(UsuarioResposta):
             email=usuario.email,
             perfil=usuario.tipo_usuario,
             email_verificado=usuario.email_verificado_em is not None,
+            ativo=usuario.ativo,
         )
 
 
 class UsuarioLoteResposta(RespostaDTO):
-    criadas: int
     atualizadas: int
     excluidas: int
-    ids_criados: list[str] = Field(default_factory=list)
 
 
 class SegurancaNotificadaResposta(RespostaDTO):

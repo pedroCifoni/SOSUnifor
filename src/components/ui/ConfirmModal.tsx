@@ -1,5 +1,5 @@
 import { useEffect, type ReactNode } from 'react'
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2 } from 'lucide-react'
 
 interface ConfirmModalProps {
   titulo: string
@@ -7,14 +7,18 @@ interface ConfirmModalProps {
   confirmarLabel: string
   onConfirm: () => void
   onCancel: () => void
+  /** "perigo" (padrão) para ações destrutivas; "neutro" para ações que desfazem algo, como reativar. */
+  tom?: 'perigo' | 'neutro'
 }
 
-export function ConfirmModal({ titulo, children, confirmarLabel, onConfirm, onCancel }: ConfirmModalProps) {
+export function ConfirmModal({ titulo, children, confirmarLabel, onConfirm, onCancel, tom = 'perigo' }: ConfirmModalProps) {
   useEffect(() => {
     const aoTecla = (e: KeyboardEvent) => e.key === 'Escape' && onCancel()
     document.addEventListener('keydown', aoTecla)
     return () => document.removeEventListener('keydown', aoTecla)
   }, [onCancel])
+
+  const perigo = tom === 'perigo'
 
   return (
     <div className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4" onClick={onCancel}>
@@ -25,8 +29,12 @@ export function ConfirmModal({ titulo, children, confirmarLabel, onConfirm, onCa
         onClick={(e) => e.stopPropagation()}
         className="w-full max-w-sm space-y-4 rounded-3xl bg-white p-6 text-center shadow-xl"
       >
-        <span className="mx-auto grid size-12 place-items-center rounded-full bg-sos-50 text-sos-500">
-          <AlertTriangle size={24} />
+        <span
+          className={`mx-auto grid size-12 place-items-center rounded-full ${
+            perigo ? 'bg-sos-50 text-sos-500' : 'bg-brand-50 text-brand-500'
+          }`}
+        >
+          {perigo ? <AlertTriangle size={24} /> : <CheckCircle2 size={24} />}
         </span>
         <div>
           <h2 className="text-base font-bold text-brand-900">{titulo}</h2>
@@ -41,7 +49,9 @@ export function ConfirmModal({ titulo, children, confirmarLabel, onConfirm, onCa
           </button>
           <button
             onClick={onConfirm}
-            className="h-11 flex-1 rounded-xl bg-sos-500 text-sm font-semibold text-white hover:bg-sos-700"
+            className={`h-11 flex-1 rounded-xl text-sm font-semibold text-white ${
+              perigo ? 'bg-sos-500 hover:bg-sos-700' : 'bg-brand-900 hover:bg-brand-700'
+            }`}
           >
             {confirmarLabel}
           </button>

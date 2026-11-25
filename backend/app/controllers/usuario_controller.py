@@ -10,10 +10,10 @@ from app.dtos.usuario_dto import (
     LIMITE_PADRAO_USUARIOS,
     Perfil,
     ResumoUsuariosResposta,
+    SituacaoConta,
     SegurancaNotificadaResposta,
     UsuarioAdminResposta,
     UsuarioAtualizacao,
-    UsuarioEntrada,
     UsuarioLoteEntrada,
     UsuarioLoteResposta,
     UsuarioResposta,
@@ -32,10 +32,12 @@ def listar(
     servico: Servico,
     busca: Annotated[str | None, Query(max_length=150, description="Texto livre em nome ou e-mail")] = None,
     perfil: Perfil | None = None,
+    situacao: Annotated[SituacaoConta, Query(description="Contas ativas (padrão) ou desativadas")] = "ativos",
     limite: Annotated[int, Query(description=f"1 a {LIMITE_MAXIMO_USUARIOS}; fora disso é ajustado")] = LIMITE_PADRAO_USUARIOS,
     pagina: Annotated[int, Query(ge=1, description="Página da listagem (a partir de 1)")] = 1,
 ) -> list[UsuarioAdminResposta]:
-    return servico.listar_ativos(
+    return servico.listar(
+        desativados=situacao == "desativados",
         busca=busca,
         perfil=perfil,
         limite=ajustar_limite_usuarios(limite),
@@ -50,8 +52,9 @@ def resumir(
     servico: Servico,
     busca: Annotated[str | None, Query(max_length=150, description="Texto livre em nome ou e-mail")] = None,
     perfil: Perfil | None = None,
+    situacao: Annotated[SituacaoConta, Query(description="Contas ativas (padrão) ou desativadas")] = "ativos",
 ) -> ResumoUsuariosResposta:
-    return servico.resumir_ativos(busca=busca, perfil=perfil)
+    return servico.resumir(desativados=situacao == "desativados", busca=busca, perfil=perfil)
 
 
 @router.get("/usuarios/segurancas", response_model=list[UsuarioResposta])
@@ -64,11 +67,7 @@ def listar_tecnicos(usuario: UsuarioAtual, servico: Servico) -> list[UsuarioResp
     return servico.listar_por_perfil("tecnico", com_email=usuario.tipo_usuario == "admin")
 
 
-@router.post("/usuarios", status_code=status.HTTP_201_CREATED, response_model=UsuarioAdminResposta)
-def criar(dados: UsuarioEntrada, _: Administrador, servico: Servico) -> UsuarioAdminResposta:
-    return servico.criar(dados)
-
-
+# Não há rota de criação aqui: as contas são criadas pelo próprio titular em POST /auth/cadastro.
 @router.post("/usuarios/lote", response_model=UsuarioLoteResposta)
 def salvar_em_lote(dados: UsuarioLoteEntrada, administrador: Administrador, servico: Servico) -> UsuarioLoteResposta:
     return servico.salvar_em_lote(dados, administrador)
@@ -79,12 +78,18 @@ def atualizar(usuario_id: UUID, dados: UsuarioAtualizacao, administrador: Admini
     return servico.atualizar(usuario_id, dados, administrador)
 
 
+@router.post("/usuarios/{usuario_id}/reativar", response_model=UsuarioAdminResposta)
+def reativar(usuario_id: UUID, administrador: Administrador, servico: Servico) -> UsuarioAdminResposta:
+    """Reativa uma conta desativada (não vale para contas anonimizadas a pedido do titular)."""
+    return servico.reativar(usuario_id, administrador)
+
+
 @router.post("/usuarios/{usuario_id}/reenviar-verificacao", response_model=MensagemResposta)
 def reenviar_verificacao(usuario_id: UUID, _: Administrador, servico: Servico) -> MensagemResposta:
     return servico.reenviar_verificacao(usuario_id)
 
 
-@router.delete("/usuarios/{usuario_id}",status_code=status.HTTP_204_NO_CONTENT)
+@router.delete("/usuarios/{usuario_id}", status_code=status.HTTP_204_NO_CONTENT)
 def excluir(usuario_id: UUID, administrador: Administrador, servico: Servico) -> None:
     servico.excluir(usuario_id, administrador)
 

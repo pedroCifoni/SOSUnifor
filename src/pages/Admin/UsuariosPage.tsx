@@ -1,32 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { MailWarning, Pencil, Plus, Search, Trash2, Users, X } from 'lucide-react'
+import { Info, MailWarning, Pencil, Search, Trash2, Users, X } from 'lucide-react'
 import { PedidosExclusao } from '@/components/privacidade/PedidosExclusao'
 import { CarregarMais } from '@/components/ui/CarregarMais'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
 import { UsuarioFormModal } from '@/components/usuarios/UsuarioFormModal'
+import { UsuariosDesativados } from '@/components/usuarios/UsuariosDesativados'
 import { useAuth } from '@/hooks/useAuth'
 import { useToast } from '@/hooks/useToast'
-import { PERFIL_LABEL, type DadosUsuario, type Perfil, type Usuario } from '@/models/usuario'
-import { usuarioService } from '@/services/usuarioService'
+import { PERFIL_LABEL, type EdicaoUsuario, type Perfil, type Usuario } from '@/models/usuario'
+import { usuarioService, type SituacaoConta } from '@/services/usuarioService'
 import { iniciais } from '@/utils/format'
 
-interface Rascunho extends Usuario {
-  novo?: boolean
-  senha?: string
-}
-
-type Formulario = { tipo: 'novo' } | { tipo: 'editar'; usuario: Rascunho }
+// As contas são criadas pelos próprios usuários (tela "Criar conta"). Aqui o admin só muda o
+// perfil, corrige o nome, desativa e reativa contas; e-mail e senha pertencem ao titular.
+type Rascunho = Usuario
 
 const LIMITE_POR_PAGINA = 20
 const DEBOUNCE_BUSCA_MS = 300
-// Mesmo teto da API (LIMITE_MAXIMO_USUARIOS).
-const LIMITE_MAXIMO_ADMINS = 200
 const PERFIS = Object.keys(PERFIL_LABEL) as Perfil[]
-
-// Id provisório, só para identificar a linha no rascunho. Não usa crypto.randomUUID():
-// ele não existe quando o sistema é aberto por HTTP pelo IP da rede (ex.: no celular).
-let contadorNovos = 0
-const novoId = () => `novo-${Date.now().toString(36)}-${++contadorNovos}`
 
 function normalizarTexto(texto: string): string {
   return texto.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
@@ -44,12 +35,7 @@ function combinaComFiltro(
 }
 
 function houveAlteracao(original: Usuario, atual: Rascunho): boolean {
-  return (
-    original.nome !== atual.nome ||
-    original.email !== atual.email ||
-    original.perfil !== atual.perfil ||
-    Boolean(atual.senha)
-  )
+  return original.nome !== atual.nome || original.perfil !== atual.perfil
 }
 
 export function UsuariosPage() {
@@ -59,6 +45,8 @@ export function UsuariosPage() {
   const [termoDigitado, setTermoDigitado] = useState('')
   const [buscaAtiva, setBuscaAtiva] = useState('')
   const [perfilFiltro, setPerfilFiltro] = useState<Perfil | ''>('')
+  // "ativos": lista editável (rascunho + Salvar). "desativados": só leitura, com Reativar.
+  const [situacao, setSituacao] = useState<SituacaoConta>('ativos')
 
   const [resultados, setResultados] = useState<Usuario[] | null>(null)
   const [totalServidor, setTotalServidor] = useState<number | null>(null)
@@ -67,13 +55,12 @@ export function UsuariosPage() {
   const [carregandoMais, setCarregandoMais] = useState(false)
   const [erroCarregamento, setErroCarregamento] = useState<string | null>(null)
 
-  // Rascunho independente da busca atual para que criações, edições e exclusões não se percam ao filtrar.
+  // Rascunho independente da busca atual para que edições e exclusões não se percam ao filtrar.
   const [originaisPorId, setOriginaisPorId] = useState<Record<string, Usuario>>({})
-  const [criados, setCriados] = useState<Rascunho[]>([])
   const [editadosPorId, setEditadosPorId] = useState<Record<string, Rascunho>>({})
   const [excluidosIds, setExcluidosIds] = useState<string[]>([])
 
-  const [formulario, setFormulario] = useState<Formulario | null>(null)
+  const [editando, setEditando] = useState<Rascunho | null>(null)
   const [paraExcluir, setParaExcluir] = useState<Rascunho | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [reenviando, setReenviando] = useState<string | null>(null)
@@ -164,12 +151,11 @@ export function UsuariosPage() {
   const mudancas = useMemo(() => {
     const editados = Object.values(editadosPorId).filter((u) => !excluidosSet.has(u.id))
     return {
-      criados,
       editados,
       excluidos: excluidosIds,
-      total: criados.length + editados.length + excluidosIds.length,
+      total: editados.length + excluidosIds.length,
     }
-  }, [criados, editadosPorId, excluidosIds, excluidosSet])
+  }, [editadosPorId, excluidosIds, excluidosSet])
 
   const visiveis = useMemo(() => {
     const mapa = new Map<string, Rascunho>()
@@ -186,30 +172,19 @@ export function UsuariosPage() {
       }
     }
 
-    for (const novo of criados) {
-      if (combinaComFiltro(novo, buscaAtiva, perfilFiltro)) {
-        mapa.set(novo.id, novo)
-      }
-    }
-
     return [...mapa.values()].sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'))
-  }, [resultados, excluidosSet, editadosPorId, criados, buscaAtiva, perfilFiltro])
+  }, [resultados, excluidosSet, editadosPorId, buscaAtiva, perfilFiltro])
 
   const totalEncontrado = useMemo(() => {
     if (totalServidor === null) return null
-    const criadosVisiveis = criados.filter((u) => combinaComFiltro(u, buscaAtiva, perfilFiltro)).length
     const excluidosNosResultados = (resultados ?? []).filter((u) => excluidosSet.has(u.id)).length
-    return Math.max(0, totalServidor + criadosVisiveis - excluidosNosResultados)
-  }, [totalServidor, criados, resultados, excluidosSet, buscaAtiva, perfilFiltro])
+    return Math.max(0, totalServidor - excluidosNosResultados)
+  }, [totalServidor, resultados, excluidosSet])
 
   const temMais = resultados !== null && totalServidor !== null && resultados.length < totalServidor
   const temFiltroAtivo = Boolean(buscaAtiva || perfilFiltro)
 
-  function alterar(id: string, dados: Partial<Rascunho>) {
-    if (criados.some((c) => c.id === id)) {
-      setCriados((atual) => atual.map((c) => (c.id === id ? { ...c, ...dados } : c)))
-      return
-    }
+  function alterar(id: string, dados: Partial<EdicaoUsuario>) {
     const original = originaisPorId[id] ?? resultados?.find((u) => u.id === id)
     if (!original) return
     setEditadosPorId((atual) => {
@@ -224,86 +199,29 @@ export function UsuariosPage() {
     })
   }
 
-  async function aplicarFormulario(dados: DadosUsuario) {
-    const nome = dados.nome.trim()
-    const email = dados.email.trim().toLowerCase()
-    const editando = formulario?.tipo === 'editar' ? formulario.usuario : null
-
+  async function aplicarEdicao(alvo: Rascunho, dados: EdicaoUsuario) {
+    const nome = dados.nome.trim().replace(/\s+/g, ' ')
     if (!nome) throw new Error('Informe o nome.')
-    if (!email.includes('@')) throw new Error('Informe um e-mail válido.')
-
-    const emailsEmUso = new Map<string, string>()
-    for (const u of Object.values(originaisPorId)) {
-      if (!excluidosSet.has(u.id)) emailsEmUso.set(u.id, (editadosPorId[u.id] ?? u).email)
-    }
-    for (const u of criados) emailsEmUso.set(u.id, u.email)
-    for (const [id, emailExistente] of emailsEmUso.entries()) {
-      if (emailExistente === email && id !== editando?.id) {
-        throw new Error('Já existe um usuário com este e-mail.')
-      }
-    }
-
-    if (!editando && (!dados.senha || dados.senha.length < 6)) {
-      throw new Error('A senha deve ter ao menos 6 caracteres.')
-    }
-    if (dados.senha && dados.senha.length < 6) throw new Error('A senha deve ter ao menos 6 caracteres.')
-    // Mesma regra da API: quem troca o próprio e-mail fica sem acesso até confirmá-lo, então precisa
-    // haver outro admin confirmado para corrigir um endereço digitado errado.
-    // A lista na tela é paginada/filtrada, então os administradores são consultados direto na API.
-    const emailSalvo = editando ? originaisPorId[editando.id]?.email : undefined
-    if (editando && editando.id === eu?.id && emailSalvo !== undefined && email !== emailSalvo) {
-      const admins = await usuarioService.listar({ perfil: 'admin', limite: LIMITE_MAXIMO_ADMINS })
-      const outroAdmin = admins.some(
-        (u) => u.id !== eu?.id && u.perfil === 'admin' && u.emailVerificado && !excluidosSet.has(u.id),
-      )
-      if (!outroAdmin) {
-        throw new Error('Para trocar o seu próprio e-mail, é preciso existir outro administrador com e-mail confirmado.')
-      }
-    }
-
-    if (editando) {
-      alterar(editando.id, { nome, email, perfil: dados.perfil, ...(dados.senha && { senha: dados.senha }) })
-    } else {
-      setCriados((atual) => [
-        ...atual,
-        { id: novoId(), nome, email, perfil: dados.perfil, senha: dados.senha, novo: true },
-      ])
-    }
-    setFormulario(null)
+    alterar(alvo.id, { nome, perfil: dados.perfil })
+    setEditando(null)
   }
 
   async function salvar() {
     setSalvando(true)
     try {
       await usuarioService.salvarLote({
-        criacoes: mudancas.criados.map((usuario) => ({
-          nome: usuario.nome,
-          email: usuario.email,
-          perfil: usuario.perfil,
-          senha: usuario.senha,
-        })),
-        atualizacoes: mudancas.editados.map((usuario) => ({
-          id: usuario.id,
-          nome: usuario.nome,
-          email: usuario.email,
-          perfil: usuario.perfil,
-          senha: usuario.senha,
-        })),
+        atualizacoes: mudancas.editados.map((usuario) => {
+          // Só envia o que mudou: a trilha de auditoria registra exatamente os campos alterados.
+          const original = originaisPorId[usuario.id]
+          return {
+            id: usuario.id,
+            ...(usuario.nome !== original?.nome && { nome: usuario.nome }),
+            ...(usuario.perfil !== original?.perfil && { perfil: usuario.perfil }),
+          }
+        }),
         exclusoes: mudancas.excluidos,
       })
       toast.sucesso(mudancas.total === 1 ? 'Alteração salva.' : `${mudancas.total} alterações salvas.`)
-      if (mudancas.criados.length > 0) {
-        toast.info(
-          mudancas.criados.length === 1
-            ? 'O acesso foi enviado por e-mail. A conta só entra depois de confirmar o e-mail.'
-            : 'Os acessos foram enviados por e-mail. As contas só entram depois de confirmar o e-mail.',
-        )
-      }
-      const emailsTrocados = mudancas.editados.filter((u) => originaisPorId[u.id]?.email !== u.email)
-      if (emailsTrocados.length > 0) {
-        toast.info('O novo e-mail precisa ser confirmado: enviamos um link para ele.')
-      }
-      setCriados([])
       setEditadosPorId({})
       setExcluidosIds([])
       await carregar()
@@ -327,7 +245,6 @@ export function UsuariosPage() {
   }
 
   function descartar() {
-    setCriados([])
     setEditadosPorId({})
     setExcluidosIds([])
     toast.info('Alterações descartadas.')
@@ -368,25 +285,56 @@ export function UsuariosPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-24">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-sm text-muted" aria-live="polite">
-          {erroCarregamento
-            ? 'Não foi possível carregar'
-            : totalEncontrado !== null
-              ? `${totalEncontrado} ${totalEncontrado === 1 ? 'usuário encontrado' : 'usuários encontrados'}${carregando ? ' · Atualizando…' : ''}`
-              : 'Carregando…'}
-        </p>
-        <button
-          onClick={() => setFormulario({ tipo: 'novo' })}
-          className="inline-flex h-10 shrink-0 items-center gap-1.5 rounded-xl bg-brand-900 px-4 text-xs font-semibold text-white hover:bg-brand-700"
-        >
-          <Plus size={16} /> Novo usuário
-        </button>
-      </div>
+      {situacao === 'ativos' && (
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-sm text-muted" aria-live="polite">
+            {erroCarregamento
+              ? 'Não foi possível carregar'
+              : totalEncontrado !== null
+                ? `${totalEncontrado} ${totalEncontrado === 1 ? 'usuário encontrado' : 'usuários encontrados'}${carregando ? ' · Atualizando…' : ''}`
+                : 'Carregando…'}
+          </p>
+        </div>
+      )}
+
+      <p className="flex items-start gap-2 rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-900">
+        <Info size={14} className="mt-0.5 shrink-0 text-brand-500" aria-hidden />
+        As contas são criadas pelas próprias pessoas, com o e-mail @unifor.br, na opção “Criar conta” do login. Aqui
+        você muda o perfil, corrige o nome, desativa e reativa contas.
+      </p>
 
       <PedidosExclusao onAnonimizado={removerAnonimizado} />
 
       <section className="space-y-3 rounded-2xl border border-line bg-white p-3 shadow-sm">
+        <div role="tablist" aria-label="Situação das contas" className="grid grid-cols-2 gap-1 rounded-xl bg-surface p-1">
+          {(
+            [
+              ['ativos', 'Ativas'],
+              ['desativados', 'Desativadas'],
+            ] as const
+          ).map(([valor, rotulo]) => {
+            const selecionada = situacao === valor
+            // Trocar de lista com alterações pendentes esconderia o rascunho: salve ou descarte antes.
+            const bloqueada = !selecionada && mudancas.total > 0
+            return (
+              <button
+                key={valor}
+                type="button"
+                role="tab"
+                aria-selected={selecionada}
+                disabled={bloqueada}
+                title={bloqueada ? 'Salve ou descarte as alterações pendentes antes' : undefined}
+                onClick={() => setSituacao(valor)}
+                className={`h-9 rounded-lg text-xs font-semibold transition disabled:cursor-not-allowed disabled:opacity-50 ${
+                  selecionada ? 'bg-white text-brand-900 shadow-sm' : 'text-muted hover:text-brand-900'
+                }`}
+              >
+                {rotulo}
+              </button>
+            )
+          })}
+        </div>
+
         <form role="search" onSubmit={aoEnviarBusca}>
           <label htmlFor="busca-usuarios" className="mb-1.5 block text-xs font-semibold text-brand-900">
             Buscar usuário
@@ -455,134 +403,140 @@ export function UsuariosPage() {
         </div>
       </section>
 
-      {erroCarregamento && (
-        <section className="rounded-2xl border border-sos-200 bg-sos-50 p-4 text-sm text-sos-700" role="alert">
-          <p className="font-semibold">Não foi possível abrir os usuários.</p>
-          <p className="mt-1 text-xs">{erroCarregamento}</p>
-          <button
-            onClick={() => void carregar()}
-            className="mt-3 rounded-lg bg-sos-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sos-800"
-          >
-            Tentar novamente
-          </button>
-        </section>
-      )}
-
-      {!erroCarregamento && !carregando && resultados !== null && visiveis.length === 0 && (
-        <section className="rounded-2xl border border-line bg-white p-8 text-center shadow-sm">
-          <Users size={28} className="mx-auto text-muted" aria-hidden="true" />
-          <p className="mt-2 text-sm font-semibold text-brand-900">
-            {buscaAtiva
-              ? `Nenhum usuário encontrado para “${buscaAtiva}”${perfilFiltro ? ` no perfil ${PERFIL_LABEL[perfilFiltro]}` : ''}.`
-              : perfilFiltro
-                ? `Nenhum usuário encontrado para o perfil ${PERFIL_LABEL[perfilFiltro]}.`
-                : 'Nenhum usuário cadastrado.'}
-          </p>
-          {temFiltroAtivo && (
-            <button
-              type="button"
-              onClick={limparFiltros}
-              className="mt-3 rounded-xl bg-brand-50 px-4 py-2 text-xs font-semibold text-brand-500 hover:bg-brand-100"
-            >
-              Limpar filtros
-            </button>
+      {situacao === 'desativados' ? (
+        <UsuariosDesativados busca={buscaAtiva} perfil={perfilFiltro} onReativado={() => void carregar()} />
+      ) : (
+        <>
+          {erroCarregamento && (
+            <section className="rounded-2xl border border-sos-200 bg-sos-50 p-4 text-sm text-sos-700" role="alert">
+              <p className="font-semibold">Não foi possível abrir os usuários.</p>
+              <p className="mt-1 text-xs">{erroCarregamento}</p>
+              <button
+                onClick={() => void carregar()}
+                className="mt-3 rounded-lg bg-sos-700 px-3 py-2 text-xs font-semibold text-white hover:bg-sos-800"
+              >
+                Tentar novamente
+              </button>
+            </section>
           )}
-        </section>
-      )}
 
-      <ul className="space-y-3">
-        {visiveis.map((u) => {
-          const proprio = u.id === eu?.id
-          const original = originaisPorId[u.id]
-          const alterado = Boolean(u.novo || editadosPorId[u.id])
-          return (
-            <li
-              key={u.id}
-              className={`rounded-2xl border bg-white p-4 shadow-sm ${alterado ? 'border-amber-400' : 'border-line'}`}
-            >
-              <div className="flex items-center gap-3">
-                <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-900 text-xs font-semibold text-white">
-                  {iniciais(u.nome)}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-semibold text-brand-900">
-                    {u.nome} {proprio && <span className="text-[11px] font-medium text-muted">(você)</span>}
-                    {alterado && (
-                      <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
-                        {u.novo ? 'NOVO' : 'ALTERADO'}
-                      </span>
+          {!erroCarregamento && !carregando && resultados !== null && visiveis.length === 0 && (
+            <section className="rounded-2xl border border-line bg-white p-8 text-center shadow-sm">
+              <Users size={28} className="mx-auto text-muted" aria-hidden="true" />
+              <p className="mt-2 text-sm font-semibold text-brand-900">
+                {buscaAtiva
+                  ? `Nenhum usuário encontrado para “${buscaAtiva}”${perfilFiltro ? ` no perfil ${PERFIL_LABEL[perfilFiltro]}` : ''}.`
+                  : perfilFiltro
+                    ? `Nenhum usuário encontrado para o perfil ${PERFIL_LABEL[perfilFiltro]}.`
+                    : 'Nenhum usuário cadastrado.'}
+              </p>
+              {temFiltroAtivo && (
+                <button
+                  type="button"
+                  onClick={limparFiltros}
+                  className="mt-3 rounded-xl bg-brand-50 px-4 py-2 text-xs font-semibold text-brand-500 hover:bg-brand-100"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </section>
+          )}
+
+          <ul className="space-y-3">
+            {visiveis.map((u) => {
+              const proprio = u.id === eu?.id
+              const original = originaisPorId[u.id]
+              const alterado = Boolean(editadosPorId[u.id])
+              return (
+                <li
+                  key={u.id}
+                  className={`rounded-2xl border bg-white p-4 shadow-sm ${alterado ? 'border-amber-400' : 'border-line'}`}
+                >
+                  <div className="flex items-center gap-3">
+                    <span className="grid size-10 shrink-0 place-items-center rounded-full bg-brand-900 text-xs font-semibold text-white">
+                      {iniciais(u.nome)}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold text-brand-900">
+                        {u.nome} {proprio && <span className="text-[11px] font-medium text-muted">(você)</span>}
+                        {alterado && (
+                          <span className="ml-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-700">
+                            ALTERADO
+                          </span>
+                        )}
+                      </p>
+                      <p className="truncate text-xs text-muted">{u.email}</p>
+                      {u.emailVerificado === false && (
+                        <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
+                            <MailWarning size={12} aria-hidden /> E-mail não confirmado
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void reenviarConfirmacao(u)}
+                            disabled={reenviando === u.id}
+                            className="text-[11px] font-semibold text-brand-500 hover:text-brand-900 disabled:opacity-60"
+                          >
+                            {reenviando === u.id ? 'Enviando…' : 'Reenviar confirmação'}
+                          </button>
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      aria-label={`Editar ${u.nome}`}
+                      onClick={() => setEditando(u)}
+                      className="rounded-lg p-2 text-brand-500 hover:bg-brand-50"
+                    >
+                      <Pencil size={18} />
+                    </button>
+                    <button
+                      aria-label={`Desativar ${u.nome}`}
+                      disabled={proprio}
+                      title={proprio ? 'Você não pode desativar a si mesmo' : undefined}
+                      onClick={() => setParaExcluir(u)}
+                      className="rounded-lg p-2 text-sos-700 hover:bg-sos-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex items-center gap-2">
+                    <label htmlFor={`perfil-${u.id}`} className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      Perfil
+                    </label>
+                    <select
+                      id={`perfil-${u.id}`}
+                      value={u.perfil}
+                      disabled={proprio}
+                      title={proprio ? 'Você não pode alterar o seu próprio perfil' : undefined}
+                      onChange={(e) => alterar(u.id, { perfil: e.target.value as Perfil })}
+                      className="h-9 flex-1 rounded-lg border border-line bg-surface px-2 text-sm text-brand-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
+                    >
+                      {PERFIS.map((p) => (
+                        <option key={p} value={p}>
+                          {PERFIL_LABEL[p]}
+                        </option>
+                      ))}
+                    </select>
+                    {original && original.perfil !== u.perfil && (
+                      <span className="text-[11px] text-muted">era {PERFIL_LABEL[original.perfil]}</span>
                     )}
-                  </p>
-                  <p className="truncate text-xs text-muted">{u.email}</p>
-                  {!u.novo && u.emailVerificado === false && (
-                    <p className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="inline-flex items-center gap-1 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-800">
-                        <MailWarning size={12} aria-hidden /> E-mail não confirmado
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void reenviarConfirmacao(u)}
-                        disabled={reenviando === u.id}
-                        className="text-[11px] font-semibold text-brand-500 hover:text-brand-900 disabled:opacity-60"
-                      >
-                        {reenviando === u.id ? 'Enviando…' : 'Reenviar confirmação'}
-                      </button>
-                    </p>
-                  )}
-                </div>
-                <button
-                  aria-label={`Editar ${u.nome}`}
-                  onClick={() => setFormulario({ tipo: 'editar', usuario: u })}
-                  className="rounded-lg p-2 text-brand-500 hover:bg-brand-50"
-                >
-                  <Pencil size={18} />
-                </button>
-                <button
-                  aria-label={`Excluir ${u.nome}`}
-                  disabled={proprio}
-                  title={proprio ? 'Você não pode excluir a si mesmo' : undefined}
-                  onClick={() => setParaExcluir(u)}
-                  className="rounded-lg p-2 text-sos-700 hover:bg-sos-50 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-                >
-                  <Trash2 size={18} />
-                </button>
-              </div>
+                  </div>
+                </li>
+              )
+            })}
+          </ul>
 
-              <div className="mt-3 flex items-center gap-2">
-                <label htmlFor={`perfil-${u.id}`} className="text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  Perfil
-                </label>
-                <select
-                  id={`perfil-${u.id}`}
-                  value={u.perfil}
-                  disabled={proprio}
-                  title={proprio ? 'Você não pode alterar o seu próprio perfil' : undefined}
-                  onChange={(e) => alterar(u.id, { perfil: e.target.value as Perfil })}
-                  className="h-9 flex-1 rounded-lg border border-line bg-surface px-2 text-sm text-brand-900 focus:border-brand-500 focus:outline-none focus:ring-2 focus:ring-brand-500/20 disabled:opacity-60"
-                >
-                  {PERFIS.map((p) => (
-                    <option key={p} value={p}>
-                      {PERFIL_LABEL[p]}
-                    </option>
-                  ))}
-                </select>
-                {original && original.perfil !== u.perfil && (
-                  <span className="text-[11px] text-muted">era {PERFIL_LABEL[original.perfil]}</span>
-                )}
-              </div>
-            </li>
-          )
-        })}
-      </ul>
-
-      <CarregarMais visivel={temMais} carregando={carregandoMais} onClick={() => void carregarMais()} />
+          <CarregarMais visivel={temMais} carregando={carregandoMais} onClick={() => void carregarMais()} />
+        </>
+      )}
 
       {mudancas.total > 0 && (
         <div className="fixed inset-x-0 bottom-0 z-30 border-t border-line bg-white/95 p-3 backdrop-blur">
           <div className="mx-auto flex max-w-2xl items-center gap-2">
             <p className="hidden flex-1 text-xs text-muted sm:block">
               {mudancas.total} {mudancas.total === 1 ? 'alteração pendente' : 'alterações pendentes'}
-              {mudancas.excluidos.length > 0 && ` · ${mudancas.excluidos.length} para excluir`}
+              {mudancas.excluidos.length > 0 && ` · ${mudancas.excluidos.length} para desativar`}
             </p>
             <button
               onClick={descartar}
@@ -602,38 +556,36 @@ export function UsuariosPage() {
         </div>
       )}
 
-      {formulario && (
+      {editando && (
         <UsuarioFormModal
-          usuario={formulario.tipo === 'editar' ? formulario.usuario : undefined}
-          perfilTravado={formulario.tipo === 'editar' && formulario.usuario.id === eu?.id}
-          onClose={() => setFormulario(null)}
-          onSubmit={async (dados) => aplicarFormulario(dados)}
+          usuario={editando}
+          perfilTravado={editando.id === eu?.id}
+          onClose={() => setEditando(null)}
+          onSubmit={async (dados) => aplicarEdicao(editando, dados)}
         />
       )}
 
       {paraExcluir && (
         <ConfirmModal
-          titulo="Excluir usuário?"
-          confirmarLabel="Sim, excluir"
+          titulo="Desativar usuário?"
+          confirmarLabel="Sim, desativar"
           onCancel={() => setParaExcluir(null)}
           onConfirm={() => {
             const alvo = paraExcluir
             setParaExcluir(null)
-            if (alvo.novo) {
-              setCriados((atual) => atual.filter((c) => c.id !== alvo.id))
-            } else {
-              setExcluidosIds((atual) => (atual.includes(alvo.id) ? atual : [...atual, alvo.id]))
-              setEditadosPorId((atual) => {
-                if (!(alvo.id in atual)) return atual
-                const proximo = { ...atual }
-                delete proximo[alvo.id]
-                return proximo
-              })
-            }
+            setExcluidosIds((atual) => (atual.includes(alvo.id) ? atual : [...atual, alvo.id]))
+            setEditadosPorId((atual) => {
+              if (!(alvo.id in atual)) return atual
+              const proximo = { ...atual }
+              delete proximo[alvo.id]
+              return proximo
+            })
           }}
         >
-          Tem certeza que deseja excluir <strong className="text-brand-900">{paraExcluir.nome}</strong>? A exclusão só é
-          definitiva depois de clicar em “Salvar alterações”.
+          Tem certeza que deseja desativar <strong className="text-brand-900">{paraExcluir.nome}</strong>? A pessoa não
+          conseguirá mais entrar, e o histórico das ocorrências continua guardado. Dá para reativar depois, na aba
+          “Desativadas”. Só vale depois de clicar em “Salvar
+          alterações”.
         </ConfirmModal>
       )}
     </div>

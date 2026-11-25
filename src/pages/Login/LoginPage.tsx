@@ -110,6 +110,13 @@ export function LoginPage() {
           </section>
         )}
 
+        <p className="mt-6 text-center text-sm text-muted">
+          Ainda não tem conta?{' '}
+          <Link to="/cadastro" className="font-semibold text-brand-500 hover:text-brand-900">
+            Criar conta
+          </Link>
+        </p>
+
         <p className="mt-6 text-center text-[11px] text-muted">
           Diretoria de Tecnologia da Informação · UNIFOR
         </p>

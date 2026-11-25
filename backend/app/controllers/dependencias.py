@@ -14,6 +14,7 @@ from app.services.area_campus_service import AreaCampusService
 from app.services.arquivo_service import ArquivoService
 from app.services.auditoria_service import AuditoriaService
 from app.services.auth_service import AuthService
+from app.services.cadastro_service import CadastroService
 from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
@@ -48,6 +49,10 @@ def auth_service(banco: Banco) -> AuthService:
 
 def auth_service_com_email(banco: Banco, tarefas: BackgroundTasks) -> AuthService:
     return AuthService(banco, emails=_emails(tarefas))
+
+
+def cadastro_service(banco: Banco, tarefas: BackgroundTasks) -> CadastroService:
+    return CadastroService(banco, emails=_emails(tarefas))
 
 
 def verificacao_email_service(banco: Banco, tarefas: BackgroundTasks) -> VerificacaoEmailService:

@@ -1,9 +1,10 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, status
 
-from app.controllers.dependencias import auth_service, auth_service_com_email, verificacao_email_service
+from app.controllers.dependencias import auth_service, auth_service_com_email, cadastro_service, verificacao_email_service
 from app.dtos.auth_dto import (
+    CadastroEntrada,
     EsqueciSenhaEntrada,
     LoginEntrada,
     MensagemResposta,
@@ -13,6 +14,7 @@ from app.dtos.auth_dto import (
     VerificarEmailEntrada,
 )
 from app.services.auth_service import AuthService
+from app.services.cadastro_service import CadastroService
 from app.services.verificacao_email_service import VerificacaoEmailService
 
 
@@ -25,6 +27,15 @@ ServicoVerificacao = Annotated[VerificacaoEmailService, Depends(verificacao_emai
 def entrar(dados: LoginEntrada, servico: Annotated[AuthService, Depends(auth_service)]) -> TokenResposta:
     """401 para credenciais inválidas; 403 com `codigo: "email_nao_verificado"` se a senha confere mas o e-mail não."""
     return servico.entrar(dados)
+
+
+@router.post("/cadastro", status_code=status.HTTP_202_ACCEPTED, response_model=MensagemResposta)
+def cadastrar(dados: CadastroEntrada, servico: Annotated[CadastroService, Depends(cadastro_service)]) -> MensagemResposta:
+    """Autocadastro com e-mail @unifor.br. A resposta é sempre a mesma, exista ou não conta com o e-mail.
+
+    A conta nasce com o perfil "usuario" e só entra depois de confirmar o e-mail (link + senha).
+    """
+    return servico.cadastrar(dados)
 
 
 @router.post("/esqueci-senha", response_model=MensagemResposta)

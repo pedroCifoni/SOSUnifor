@@ -24,24 +24,29 @@ def _login(client: TestClient, email: str, senha: str):
     return client.post("/auth/login", json={"email": email, "senha": senha})
 
 
-def _criar_pelo_admin(client: TestClient, token_admin: str, email: str = "nova@unifor.br", senha: str = "senha-nova1"):
+def _cadastrar(client: TestClient, email: str = "nova@unifor.br", senha: str = "senha-nova1") -> None:
+    from app.core.privacidade import VERSAO_TERMOS
+
     resposta = client.post(
-        "/usuarios",
-        headers=_cabecalho(token_admin),
-        json={"nome": "Nova Pessoa", "email": email, "perfil": "usuario", "senha": senha},
+        "/auth/cadastro",
+        json={"nome": "Nova Pessoa", "email": email, "senha": senha, "versao_termos": VERSAO_TERMOS},
     )
-    assert resposta.status_code == 201, resposta.text
-    return resposta.json()
+    assert resposta.status_code == 202, resposta.text
 
 
-def test_fluxo_completo_conta_criada_pelo_admin(client: TestClient, token_admin: str, emails) -> None:
-    criada = _criar_pelo_admin(client, token_admin)
-    assert criada["emailVerificado"] is False
+def _confirmar(client: TestClient, token: str, senha: str = "senha-nova1"):
+    return client.post("/auth/verificar-email", json={"token": token, "senha": senha})
+
+
+def test_fluxo_completo_conta_autocadastrada(client: TestClient, token_admin: str, emails) -> None:
+    _cadastrar(client)
     assert len(emails) == 1
-    boas_vindas = emails[0]
-    assert "senha-nova1" in (boas_vindas["texto"] or "")
-    assert "Confirmar e-mail" in (boas_vindas["html"] or "")
-    token = _token_do_email(boas_vindas)
+    confirmacao = emails[0]
+    assert confirmacao["destinatario"] == "nova@unifor.br"
+    # A senha nunca vai por e-mail.
+    assert "senha-nova1" not in (confirmacao["texto"] or "") + (confirmacao["html"] or "")
+    assert "Confirmar e-mail" in (confirmacao["html"] or "")
+    token = _token_do_email(confirmacao)
 
     # Antes de confirmar: 403 com código próprio; o resto do formato de erro não muda.
     recusado = _login(client, "nova@unifor.br", "senha-nova1")
@@ -54,15 +59,23 @@ def test_fluxo_completo_conta_criada_pelo_admin(client: TestClient, token_admin:
         hashes = list(sessao.scalars(select(TokenVerificacaoEmail.token_hash)))
     assert hashes and token not in hashes
 
-    confirmado = client.post("/auth/verificar-email", json={"token": token})
+    # O link sozinho não confirma: é preciso a senha da conta. Senha errada não gasta o link.
+    assert client.post("/auth/verificar-email", json={"token": token}).status_code == 422
+    errada = _confirmar(client, token, "senha-de-outra-pessoa")
+    assert errada.status_code == 400
+    assert errada.json()["codigo"] == "senha_nao_confere"
+
+    confirmado = _confirmar(client, token)
     assert confirmado.status_code == 200, confirmado.text
     assert _login(client, "nova@unifor.br", "senha-nova1").status_code == 200
 
     lista = client.get("/usuarios", headers=_cabecalho(token_admin)).json()
-    assert next(u for u in lista if u["email"] == "nova@unifor.br")["emailVerificado"] is True
+    criada = next(u for u in lista if u["email"] == "nova@unifor.br")
+    assert criada["emailVerificado"] is True
+    assert criada["perfil"] == "usuario"
 
     # Uso único.
-    assert client.post("/auth/verificar-email", json={"token": token}).status_code == 400
+    assert _confirmar(client, token).status_code == 400
 
 
 def test_login_403_so_com_senha_correta(client: TestClient, criar_usuario) -> None:
@@ -77,22 +90,22 @@ def test_login_403_so_com_senha_correta(client: TestClient, criar_usuario) -> No
     assert certa.json()["codigo"] == "email_nao_verificado"
 
 
-def test_token_expirado_invalido_e_pedido_novo_invalida_anterior(client: TestClient, token_admin: str, emails) -> None:
-    _criar_pelo_admin(client, token_admin)
+def test_token_expirado_invalido_e_pedido_novo_invalida_anterior(client: TestClient, emails) -> None:
+    _cadastrar(client)
     primeiro = _token_do_email(emails[0])
 
     assert client.post("/auth/reenviar-verificacao", json={"email": "nova@unifor.br"}).status_code == 200
     segundo = _token_do_email(emails[-1])
     assert "Confirme o seu e-mail" in (emails[-1]["assunto"] or "")
     # O link antigo deixou de valer quando o novo foi pedido.
-    assert client.post("/auth/verificar-email", json={"token": primeiro}).status_code == 400
+    assert _confirmar(client, primeiro).status_code == 400
 
     with FabricaSessao() as sessao:
         for registro in sessao.scalars(select(TokenVerificacaoEmail).where(TokenVerificacaoEmail.usado_em.is_(None))):
             registro.expira_em = datetime.now(timezone.utc) - timedelta(seconds=1)
         sessao.commit()
-    assert client.post("/auth/verificar-email", json={"token": segundo}).status_code == 400
-    assert client.post("/auth/verificar-email", json={"token": "x" * 43}).status_code == 400
+    assert _confirmar(client, segundo).status_code == 400
+    assert _confirmar(client, "x" * 43).status_code == 400
     assert _login(client, "nova@unifor.br", "senha-nova1").status_code == 403
 
 
@@ -113,63 +126,6 @@ def test_reenvio_nao_revela_contas_e_respeita_limite(client: TestClient, criar_u
         resposta = client.post("/auth/reenviar-verificacao", json={"email": "pendente@unifor.br"})
         assert resposta.text == respostas[0].text
     assert len(emails) == 3
-
-
-def test_troca_de_email_pelo_admin_exige_nova_confirmacao(client: TestClient, token_admin: str, criar_usuario, emails) -> None:
-    pessoa = criar_usuario("antigo@unifor.br", senha="senha123")
-    assert _login(client, "antigo@unifor.br", "senha123").status_code == 200
-
-    # Pedido de senha aberto para o endereço antigo: não pode servir para "comprovar" o novo.
-    client.post("/auth/esqueci-senha", json={"email": "antigo@unifor.br"})
-    link_senha_antigo = re.search(r"token=([A-Za-z0-9_-]+)", emails[-1]["texto"] or "").group(1)
-
-    resposta = client.put(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json={"email": "novo@unifor.br"})
-    assert resposta.status_code == 200, resposta.text
-    assert resposta.json()["emailVerificado"] is False
-    assert emails[-1]["destinatario"] == "novo@unifor.br"
-    token = _token_do_email(emails[-1])
-
-    assert client.post("/auth/redefinir-senha", json={"token": link_senha_antigo, "nova_senha": "outra-senha"}).status_code == 400
-    assert _login(client, "novo@unifor.br", "senha123").status_code == 403
-    assert client.post("/auth/verificar-email", json={"token": token}).status_code == 200
-    assert _login(client, "novo@unifor.br", "senha123").status_code == 200
-
-    # Salvar o mesmo e-mail (ex.: só mudou o nome) não desfaz a confirmação.
-    quantos = len(emails)
-    client.post(
-        "/usuarios/lote",
-        headers=_cabecalho(token_admin),
-        json={"atualizacoes": [{"id": str(pessoa.id), "nome": "Outro Nome", "email": "novo@unifor.br"}]},
-    )
-    assert len(emails) == quantos
-    assert _login(client, "novo@unifor.br", "senha123").status_code == 200
-
-
-def test_troca_de_email_em_lote_invalida_link_do_endereco_antigo(client: TestClient, token_admin: str, emails) -> None:
-    criada = _criar_pelo_admin(client, token_admin, email="primeiro@unifor.br")
-    link_antigo = _token_do_email(emails[-1])
-    resposta = client.post(
-        "/usuarios/lote",
-        headers=_cabecalho(token_admin),
-        json={"atualizacoes": [{"id": criada["id"], "email": "segundo@unifor.br"}]},
-    )
-    assert resposta.status_code == 200, resposta.text
-    assert emails[-1]["destinatario"] == "segundo@unifor.br"
-    assert client.post("/auth/verificar-email", json={"token": link_antigo}).status_code == 400
-    assert client.post("/auth/verificar-email", json={"token": _token_do_email(emails[-1])}).status_code == 200
-
-
-def test_lote_cria_contas_nao_verificadas_com_link(client: TestClient, token_admin: str, emails) -> None:
-    resposta = client.post(
-        "/usuarios/lote",
-        headers=_cabecalho(token_admin),
-        json={"criacoes": [{"nome": "Lote", "email": "lote@unifor.br", "perfil": "tecnico", "senha": "senha123"}]},
-    )
-    assert resposta.status_code == 200, resposta.text
-    assert len(emails) == 1
-    assert _login(client, "lote@unifor.br", "senha123").status_code == 403
-    assert client.post("/auth/verificar-email", json={"token": _token_do_email(emails[0])}).status_code == 200
-    assert _login(client, "lote@unifor.br", "senha123").status_code == 200
 
 
 def test_redefinicao_de_senha_comprova_o_email(client: TestClient, criar_usuario, emails) -> None:
@@ -230,44 +186,14 @@ def _id_por_email(client: TestClient, token_admin: str, email: str) -> str:
     return next(u["id"] for u in lista if u["email"] == email)
 
 
-def test_admin_so_troca_o_proprio_email_se_houver_outro_admin_confirmado(
-    client: TestClient, token_admin: str, criar_usuario, emails
-) -> None:
-    meu_id = _id_por_email(client, token_admin, "admin@unifor.br")
-    # Um admin ainda não confirmado não resolve: ele também não conseguiria entrar.
-    criar_usuario("outro.admin@unifor.br", perfil="admin", email_verificado=False)
-
-    for envio in (
-        lambda: client.put(f"/usuarios/{meu_id}", headers=_cabecalho(token_admin), json={"email": "admim@unifor.br"}),
-        lambda: client.post(
-            "/usuarios/lote",
-            headers=_cabecalho(token_admin),
-            json={"atualizacoes": [{"id": meu_id, "email": "admim@unifor.br"}]},
-        ),
-    ):
-        recusado = envio()
-        assert recusado.status_code == 400, recusado.text
-        assert "outro administrador" in recusado.json()["detail"]
-    assert emails == []
-    assert _login(client, "admin@unifor.br", "123456").status_code == 200
-
-    # Mudar só o nome continua permitido.
-    assert client.put(f"/usuarios/{meu_id}", headers=_cabecalho(token_admin), json={"nome": "Admin"}).status_code == 200
-
-    criar_usuario("reserva@unifor.br", perfil="admin")
-    aceito = client.put(f"/usuarios/{meu_id}", headers=_cabecalho(token_admin), json={"email": "admin.novo@unifor.br"})
-    assert aceito.status_code == 200, aceito.text
-    assert aceito.json()["emailVerificado"] is False
-
-
-def test_sessao_aberta_para_quando_o_email_deixa_de_estar_confirmado(
-    client: TestClient, token_admin: str, criar_usuario
-) -> None:
+def test_sessao_aberta_para_quando_o_email_deixa_de_estar_confirmado(client: TestClient, criar_usuario) -> None:
     pessoa = criar_usuario("logada@unifor.br", senha="senha123")
     token = _login(client, "logada@unifor.br", "senha123").json()["token"]
     assert client.get("/notificacoes", headers=_cabecalho(token)).status_code == 200
 
-    client.put(f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json={"email": "trocado@unifor.br"})
+    with FabricaSessao() as sessao:
+        sessao.get(Usuario, pessoa.id).email_verificado_em = None
+        sessao.commit()
     barrado = client.get("/notificacoes", headers=_cabecalho(token))
     assert barrado.status_code == 403
     assert barrado.json()["codigo"] == "email_nao_verificado"
@@ -295,7 +221,7 @@ def test_status_de_confirmacao_so_aparece_para_o_admin(client: TestClient, token
 
 
 def test_links_nao_guardam_o_endereco_e_somem_com_a_conta(client: TestClient, token_admin: str, emails) -> None:
-    criada = _criar_pelo_admin(client, token_admin, email="privacidade@unifor.br")
+    _cadastrar(client, email="privacidade@unifor.br")
     with engine.connect() as conexao:
         colunas = {c for c in conexao.execute(text("SELECT * FROM tokens_verificacao_email LIMIT 0")).keys()}
         linhas = conexao.execute(text("SELECT * FROM tokens_verificacao_email")).all()
@@ -307,7 +233,7 @@ def test_links_nao_guardam_o_endereco_e_somem_com_a_conta(client: TestClient, to
         for registro in sessao.scalars(select(TokenVerificacaoEmail)):
             registro.criado_em = registro.expira_em = datetime.now(timezone.utc) - timedelta(days=30)
         sessao.commit()
-    _criar_pelo_admin(client, token_admin, email="outra@unifor.br")
+    _cadastrar(client, email="outra@unifor.br")
     with FabricaSessao() as sessao:
         assert sessao.scalar(select(func.count()).select_from(TokenVerificacaoEmail)) == 1
 
@@ -316,7 +242,7 @@ def test_links_nao_guardam_o_endereco_e_somem_com_a_conta(client: TestClient, to
     assert client.delete(f"/usuarios/{outra_id}", headers=_cabecalho(token_admin)).status_code == 204
     with FabricaSessao() as sessao:
         assert sessao.scalar(select(func.count()).select_from(TokenVerificacaoEmail)) == 0
-    assert criada["id"] != outra_id
+    assert _id_por_email(client, token_admin, "privacidade@unifor.br") != outra_id
 
 
 def test_reenvios_simultaneos_respeitam_o_limite(client: TestClient, criar_usuario, emails) -> None:
@@ -341,11 +267,11 @@ def test_reenvios_simultaneos_respeitam_o_limite(client: TestClient, criar_usuar
     assert len(emails) == LIMITE_ENVIOS_VERIFICACAO
 
 
-def test_migracao_tira_o_email_em_claro_dos_links(client: TestClient, token_admin: str, emails) -> None:
+def test_migracao_tira_o_email_em_claro_dos_links(client: TestClient, emails) -> None:
     """Bancos que rodaram a primeira versão da tabela (coluna `email`) passam a `email_hash`."""
     from app.core.inicializacao_banco import remover_email_em_claro_dos_links_de_confirmacao
 
-    _criar_pelo_admin(client, token_admin)
+    _cadastrar(client)
     with engine.begin() as conexao:
         conexao.execute(text("ALTER TABLE tokens_verificacao_email DROP COLUMN email_hash"))
         conexao.execute(text("ALTER TABLE tokens_verificacao_email ADD COLUMN email VARCHAR(150) NOT NULL DEFAULT 'x@unifor.br'"))
@@ -358,6 +284,6 @@ def test_migracao_tira_o_email_em_claro_dos_links(client: TestClient, token_admi
         colunas = set(conexao.execute(text("SELECT * FROM tokens_verificacao_email LIMIT 0")).keys())
     assert "email" not in colunas and "email_hash" in colunas
     # O link antigo foi descartado; um novo pedido funciona normalmente.
-    assert client.post("/auth/verificar-email", json={"token": _token_do_email(emails[0])}).status_code == 400
+    assert _confirmar(client, _token_do_email(emails[0])).status_code == 400
     client.post("/auth/reenviar-verificacao", json={"email": "nova@unifor.br"})
-    assert client.post("/auth/verificar-email", json={"token": _token_do_email(emails[-1])}).status_code == 200
+    assert _confirmar(client, _token_do_email(emails[-1])).status_code == 200

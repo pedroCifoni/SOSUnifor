@@ -1,21 +1,23 @@
 import { useEffect, useState, type FormEvent } from 'react'
-import { Lock, Mail, User as UserIcon, X } from 'lucide-react'
+import { Mail, User as UserIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/Button'
 import { Input } from '@/components/ui/Input'
-import { PERFIL_LABEL, type DadosUsuario, type Perfil, type Usuario } from '@/models/usuario'
+import { PERFIL_LABEL, type EdicaoUsuario, type Perfil, type Usuario } from '@/models/usuario'
 
 interface UsuarioFormModalProps {
-  usuario?: Usuario
+  usuario: Usuario
   perfilTravado?: boolean
   onClose: () => void
-  onSubmit: (dados: DadosUsuario) => Promise<void>
+  onSubmit: (dados: EdicaoUsuario) => Promise<void>
 }
 
+/**
+ * Edição de uma conta pelo administrador: só nome e perfil. O e-mail aparece apenas para leitura,
+ * e a senha não é tratada aqui: as duas coisas pertencem ao titular.
+ */
 export function UsuarioFormModal({ usuario, perfilTravado, onClose, onSubmit }: UsuarioFormModalProps) {
-  const [nome, setNome] = useState(usuario?.nome ?? '')
-  const [email, setEmail] = useState(usuario?.email ?? '')
-  const [perfil, setPerfil] = useState<Perfil>(usuario?.perfil ?? 'usuario')
-  const [senha, setSenha] = useState('')
+  const [nome, setNome] = useState(usuario.nome)
+  const [perfil, setPerfil] = useState<Perfil>(usuario.perfil)
   const [erro, setErro] = useState<string | null>(null)
   const [salvando, setSalvando] = useState(false)
 
@@ -30,7 +32,7 @@ export function UsuarioFormModal({ usuario, perfilTravado, onClose, onSubmit }: 
     setErro(null)
     setSalvando(true)
     try {
-      await onSubmit({ nome, email, perfil, senha })
+      await onSubmit({ nome, perfil })
     } catch (err) {
       setErro(err instanceof Error ? err.message : 'Não foi possível salvar.')
       setSalvando(false)
@@ -42,41 +44,33 @@ export function UsuarioFormModal({ usuario, perfilTravado, onClose, onSubmit }: 
       <form
         role="dialog"
         aria-modal="true"
-        aria-label={usuario ? 'Editar usuário' : 'Novo usuário'}
+        aria-label="Editar usuário"
         onClick={(e) => e.stopPropagation()}
         onSubmit={enviar}
         noValidate
         className="max-h-[92vh] w-full space-y-4 overflow-y-auto rounded-t-3xl bg-white p-5 shadow-xl sm:max-w-md sm:rounded-3xl"
       >
         <div className="flex items-center justify-between">
-          <h2 className="text-base font-bold text-brand-900">{usuario ? 'Editar usuário' : 'Novo usuário'}</h2>
+          <h2 className="text-base font-bold text-brand-900">Editar usuário</h2>
           <button type="button" aria-label="Fechar" onClick={onClose} className="rounded-lg p-1.5 text-muted hover:bg-brand-50">
             <X size={20} />
           </button>
         </div>
 
-        <Input label="Nome" icon={<UserIcon size={18} />} value={nome} onChange={(e) => setNome(e.target.value)} required />
         <Input
-          label="E-mail institucional"
-          type="email"
-          icon={<Mail size={18} />}
-          placeholder="nome.sobrenome@unifor.br"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
+          label="Nome"
+          icon={<UserIcon size={18} />}
+          value={nome}
+          maxLength={150}
+          onChange={(e) => setNome(e.target.value)}
           required
         />
-        <Input
-          label={usuario ? 'Nova senha (opcional)' : 'Senha'}
-          type="password"
-          autoComplete="new-password"
-          icon={<Lock size={18} />}
-          placeholder={usuario ? 'Deixe em branco para manter' : 'Mínimo de 6 caracteres'}
-          value={senha}
-          onChange={(e) => setSenha(e.target.value)}
-        />
-        {!usuario && (
-          <p className="-mt-2 text-xs text-muted">Ao salvar, a pessoa recebe por e-mail o login e esta senha.</p>
-        )}
+        <div>
+          <Input label="E-mail institucional" type="email" icon={<Mail size={18} />} value={usuario.email} readOnly disabled />
+          <p className="mt-1 text-xs text-muted">
+            O e-mail e a senha pertencem ao titular. Para trocar a senha, a pessoa usa “Esqueci minha senha”.
+          </p>
+        </div>
 
         <fieldset disabled={perfilTravado}>
           <legend className="mb-1.5 text-xs font-semibold text-brand-900">Perfil</legend>
@@ -113,8 +107,8 @@ export function UsuarioFormModal({ usuario, perfilTravado, onClose, onSubmit }: 
           <Button type="button" variant="secondary" onClick={onClose}>
             Cancelar
           </Button>
-          <Button type="submit" loading={salvando} disabled={!nome || !email || (!usuario && !senha)}>
-            {usuario ? 'Aplicar' : 'Adicionar'}
+          <Button type="submit" loading={salvando} disabled={!nome.trim()}>
+            Aplicar
           </Button>
         </div>
       </form>

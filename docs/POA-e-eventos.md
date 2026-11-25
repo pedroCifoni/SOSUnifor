@@ -132,7 +132,7 @@ Dois parâmetros do `@auditar` cobrem casos especiais:
 
 - `itens` (operações em lote): o painel de usuários salva tudo por `POST /usuarios/lote`.
   Além do registro `auditoria.usuario.salvar_em_lote` (com as contagens), cada conta afetada
-  gera o seu próprio `auditoria.usuario.criar` / `.editar` / `.excluir`, com o id da conta em
+  gera o seu próprio `auditoria.usuario.editar` / `.excluir`, com o id da conta em
   `entidade_id` e, na edição, os NOMES dos campos alterados (nunca os valores). Todos têm o
   mesmo `request_id`. Lote que falha não gravou nada (tudo ou nada): fica só o registro do lote.
 - `registrar_se`: `POST /auth/redefinir-senha` é pública; tentativa com um link que nem existe

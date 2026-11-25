@@ -11,7 +11,8 @@ from datetime import datetime, timedelta, timezone
 from sqlalchemy.orm import Session
 
 from app.core.config import configuracoes
-from app.core.excecoes import MuitasTentativasErro, RegraDeNegocioErro
+from app.core.excecoes import MuitasTentativasErro, RegraDeNegocioErro, SenhaNaoConfereErro
+from app.core.seguranca import conferir_senha
 from app.dtos.auth_dto import MensagemResposta, ReenviarVerificacaoEntrada, VerificarEmailEntrada
 from app.entities.token_verificacao_email import TokenVerificacaoEmail
 from app.entities.usuario import Usuario
@@ -33,6 +34,10 @@ MENSAGEM_REENVIO_VERIFICACAO = (
 )
 MENSAGEM_LINK_INVALIDO = "Este link de confirmação é inválido ou expirou. Peça um novo na tela de login."
 MENSAGEM_EMAIL_CONFIRMADO = "E-mail confirmado. Você já pode entrar no sistema."
+MENSAGEM_SENHA_NAO_CONFERE = (
+    "A senha não confere com a do cadastro. Digite a senha que você escolheu ao criar a conta. "
+    "Se não lembrar, faça o cadastro de novo com o mesmo e-mail."
+)
 
 
 def hash_do_token(token: str) -> str:
@@ -110,6 +115,11 @@ class VerificacaoEmailService:
         # O link comprova o endereço para o qual foi enviado; se a conta mudou de e-mail, não serve mais.
         if usuario is None or not usuario.ativo or hash_do_endereco(dados.token, usuario.email) != registro.email_hash:
             raise RegraDeNegocioErro(MENSAGEM_LINK_INVALIDO)
+        # O link prova que a pessoa é dona do e-mail; a senha prova que foi ela quem escolheu a senha da conta.
+        # Sem isso, alguém poderia cadastrar o e-mail de outra pessoa com uma senha sua e esperar a vítima
+        # clicar no link para ficar com uma conta confirmada em nome dela. A senha errada não gasta o link.
+        if not conferir_senha(dados.senha, usuario.senha_hash):
+            raise SenhaNaoConfereErro(MENSAGEM_SENHA_NAO_CONFERE)
 
         if usuario.email_verificado_em is None:
             usuario.email_verificado_em = agora

@@ -6,6 +6,7 @@ import { PainelAdminPage } from '@/pages/Admin/PainelAdminPage'
 import { RelatoriosPage } from '@/pages/Admin/RelatoriosPage'
 import { UsuariosPage } from '@/pages/Admin/UsuariosPage'
 import { HomePage } from '@/pages/Home/HomePage'
+import { CadastroPage } from '@/pages/Login/CadastroPage'
 import { EsqueciSenhaPage } from '@/pages/Login/EsqueciSenhaPage'
 import { LoginPage } from '@/pages/Login/LoginPage'
 import { RedefinirSenhaPage } from '@/pages/Login/RedefinirSenhaPage'
@@ -37,6 +38,7 @@ export function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/cadastro" element={<CadastroPage />} />
       <Route path="/esqueci-senha" element={<EsqueciSenhaPage />} />
       <Route path="/redefinir-senha" element={<RedefinirSenhaPage />} />
       <Route path="/verificar-email" element={<VerificarEmailPage />} />
