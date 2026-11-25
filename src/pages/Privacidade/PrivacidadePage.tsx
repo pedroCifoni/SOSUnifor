@@ -1,7 +1,8 @@
 import type { ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { ArrowLeft } from 'lucide-react'
+import { ArrowLeft, Home } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
+import { useVoltar } from '@/hooks/useVoltar'
 import { CONTATO_DPO, CONTATO_DPO_PROVISORIO, DATA_TERMOS, VERSAO_TERMOS } from '@/models/privacidade'
 
 function Secao({ titulo, children }: { titulo: string; children: ReactNode }) {
@@ -24,16 +25,31 @@ function Item({ titulo, children }: { titulo: string; children: ReactNode }) {
 /** Política de Privacidade (LGPD, Lei 13.709/2018). Página pública: abre com ou sem login. */
 export function PrivacidadePage() {
   const { usuario } = useAuth()
+  const inicio = !usuario ? '/login' : usuario.perfil === 'admin' ? '/admin' : '/'
+  // Volta para onde a pessoa estava (Perfil, menu, aviso de termos ou login), sem empilhar página.
+  const voltar = useVoltar(inicio)
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-brand-50 to-surface px-4 py-8">
       <article className="mx-auto w-full max-w-2xl space-y-6 rounded-3xl border border-line bg-white p-6 shadow-sm sm:p-8">
-        <Link
-          to={usuario ? '/perfil' : '/login'}
-          className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-500 hover:text-brand-900"
-        >
-          <ArrowLeft size={14} /> {usuario ? 'Voltar ao perfil' : 'Voltar ao login'}
-        </Link>
+        <nav className="flex items-center justify-between gap-3">
+          <button
+            type="button"
+            onClick={voltar}
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-500 hover:text-brand-900"
+          >
+            <ArrowLeft size={14} /> Voltar
+          </button>
+          {usuario && (
+            <Link
+              to={inicio}
+              replace
+              className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand-500 hover:text-brand-900"
+            >
+              <Home size={14} /> Tela principal
+            </Link>
+          )}
+        </nav>
 
         <header className="space-y-1">
           <img src="/unifor-logo-horizontal.svg" alt="UNIFOR" className="mb-3 h-9" />

@@ -4,6 +4,7 @@ import { ArrowLeft, ClipboardList, FileDown, History, Home, LayoutDashboard, Log
 import { NotificationBell } from '@/components/layout/NotificationBell'
 import { AvisoTermos } from '@/components/privacidade/AvisoTermos'
 import { useAuth } from '@/hooks/useAuth'
+import { useVoltar } from '@/hooks/useVoltar'
 import { iniciais } from '@/utils/format'
 
 const TITULOS: Record<string, string> = {
@@ -24,6 +25,7 @@ export function AppLayout() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const [menuAberto, setMenuAberto] = useState(false)
+  const voltar = useVoltar(usuario?.perfil === 'admin' ? '/admin' : '/')
 
   if (!usuario) return null
 
@@ -69,7 +71,7 @@ export function AppLayout() {
         ) : (
           <button
             aria-label="Voltar"
-            onClick={() => navigate(-1)}
+            onClick={voltar}
             className="rounded-lg p-2 text-brand-900 hover:bg-brand-50"
           >
             <ArrowLeft size={22} />
