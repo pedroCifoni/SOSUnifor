@@ -1,4 +1,4 @@
-"""Autocadastro: qualquer pessoa com e-mail @unifor.br cria a própria conta, sempre com o perfil "usuario".
+"""Autocadastro: qualquer pessoa com e-mail @edu.unifor.br cria a própria conta, sempre com o perfil "usuario".
 
 Regras de segurança:
 - A resposta é sempre a mesma, exista ou não uma conta com o e-mail (não revela quem está cadastrado).

@@ -4,9 +4,11 @@ from pydantic import BaseModel, ConfigDict
 from pydantic.alias_generators import to_camel
 
 
-# Único domínio aceito no autocadastro. A comparação é exata: subdomínios (ex.: aluno.unifor.br)
-# e domínios parecidos (ex.: unifor.br.com, unifor.com.br) são recusados.
-DOMINIO_EMAIL_INSTITUCIONAL = "unifor.br"
+# Único domínio aceito no autocadastro: o e-mail oficial dos alunos. A comparação é exata:
+# outros subdomínios (ex.: aluno.unifor.br), o domínio dos funcionários (unifor.br) e domínios
+# parecidos (ex.: edu.unifor.br.com, edu.unifor.com.br) são recusados. As contas da equipe
+# (admin, segurança, técnicos) não passam pelo autocadastro.
+DOMINIO_EMAIL_INSTITUCIONAL = "edu.unifor.br"
 MENSAGEM_EMAIL_INSTITUCIONAL = f"Use o seu e-mail institucional (@{DOMINIO_EMAIL_INSTITUCIONAL})."
 
 # Parte antes do @: letras minúsculas, números e . _ % + -, começando e terminando com letra ou número.

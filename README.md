@@ -37,7 +37,7 @@ O **administrador** faz a triagem de todas as ocorrências e encaminha cada uma 
 | Segurança | Recebe as ocorrências encaminhadas, aceita e conclui o atendimento |
 | Técnico | Recebe os chamados de suporte técnico encaminhados, aceita e conclui o atendimento |
 
-As contas são criadas pelas próprias pessoas em **Criar conta** (`/cadastro`), apenas com e-mail `@unifor.br` (domínio exato: subdomínios e domínios parecidos são recusados). Toda conta nova nasce com o perfil **Usuário**; o administrador muda o perfil, corrige o nome, desativa e reativa contas (aba **Desativadas** em Usuários), mas não cria contas nem altera e-mail ou senha. Contas anonimizadas a pedido do titular (LGPD) não podem ser reativadas.
+As contas são criadas pelas próprias pessoas em **Criar conta** (`/cadastro`), apenas com o e-mail de aluno `@edu.unifor.br` (domínio exato: outros subdomínios, o domínio de funcionários `@unifor.br` e domínios parecidos são recusados). As contas da equipe (admin, segurança, técnicos) vêm das contas iniciais e recebem o perfil pelo administrador. Toda conta nova nasce com o perfil **Usuário**; o administrador muda o perfil, corrige o nome, desativa e reativa contas (aba **Desativadas** em Usuários), mas não cria contas nem altera e-mail ou senha. Contas anonimizadas a pedido do titular (LGPD) não podem ser reativadas.
 
 ## Arquitetura
 

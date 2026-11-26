@@ -15,8 +15,8 @@ def _criar(client, token: str, *, tipo: str, titulo: str = "Ocorrência de teste
 
 
 def test_admin_exporta_csv_filtrado_com_bom_e_protecao(client, criar_usuario) -> None:
-    criar_usuario("autor.relatorio@unifor.br", nome="Solicitante")
-    token_autor = token_de(client, "autor.relatorio@unifor.br", "senha123")
+    criar_usuario("autor.relatorio@edu.unifor.br", nome="Solicitante")
+    token_autor = token_de(client, "autor.relatorio@edu.unifor.br", "senha123")
     _criar(client, token_autor, tipo="manutencao", titulo='=SOMA(1;1)')
     _criar(client, token_autor, tipo="sos", titulo="Não deve entrar")
 
@@ -34,8 +34,8 @@ def test_admin_exporta_csv_filtrado_com_bom_e_protecao(client, criar_usuario) ->
 
 
 def test_admin_exporta_pdf_e_preserva_anonimato(client, criar_usuario) -> None:
-    criar_usuario("anonima.relatorio@unifor.br", nome="Nome que não pode vazar")
-    token_autor = token_de(client, "anonima.relatorio@unifor.br", "senha123")
+    criar_usuario("anonima.relatorio@edu.unifor.br", nome="Nome que não pode vazar")
+    token_autor = token_de(client, "anonima.relatorio@edu.unifor.br", "senha123")
     _criar(client, token_autor, tipo="denuncia", anonima=True)
 
     resposta_csv = client.get("/relatorios/ocorrencias.csv?tipo=denuncia", headers=_cabecalho(token_de(client, "admin@unifor.br")))
@@ -50,8 +50,8 @@ def test_admin_exporta_pdf_e_preserva_anonimato(client, criar_usuario) -> None:
 
 
 def test_exportacao_exige_admin_e_rejeita_filtros_invalidos(client, criar_usuario) -> None:
-    criar_usuario("comum.relatorio@unifor.br")
-    comum = token_de(client, "comum.relatorio@unifor.br", "senha123")
+    criar_usuario("comum.relatorio@edu.unifor.br")
+    comum = token_de(client, "comum.relatorio@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
 
     assert client.get("/relatorios/ocorrencias.csv", headers=_cabecalho(comum)).status_code == 403

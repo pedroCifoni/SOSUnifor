@@ -1,4 +1,4 @@
-"""Autocadastro (POST /auth/cadastro): só e-mail @unifor.br, perfil sempre "usuario", sem revelar contas."""
+"""Autocadastro (POST /auth/cadastro): só e-mail @edu.unifor.br, perfil sempre "usuario", sem revelar contas."""
 
 import json
 import re
@@ -14,7 +14,7 @@ from app.entities.usuario import Usuario
 from app.services.verificacao_email_service import LIMITE_ENVIOS_VERIFICACAO
 
 
-def _cadastrar(client: TestClient, email: str = "nova.pessoa@unifor.br", senha: str = "senha-forte-1", **extras):
+def _cadastrar(client: TestClient, email: str = "nova.pessoa@edu.unifor.br", senha: str = "senha-forte-1", **extras):
     dados = {"nome": "Nova Pessoa", "email": email, "senha": senha, "versao_termos": VERSAO_TERMOS, **extras}
     return client.post("/auth/cadastro", json=dados)
 
@@ -39,10 +39,10 @@ def _conta(email: str) -> Usuario | None:
 
 
 def test_cadastro_cria_conta_de_usuario_pendente_e_envia_link(client: TestClient, emails) -> None:
-    resposta = _cadastrar(client, email="  Nova.Pessoa@UNIFOR.BR ", nome="  Nova   Pessoa ")
+    resposta = _cadastrar(client, email="  Nova.Pessoa@EDU.UNIFOR.BR ", nome="  Nova   Pessoa ")
     assert resposta.status_code == 202, resposta.text
 
-    conta = _conta("nova.pessoa@unifor.br")
+    conta = _conta("nova.pessoa@edu.unifor.br")
     assert conta is not None
     assert conta.nome == "Nova Pessoa"
     assert conta.tipo_usuario == "usuario"
@@ -52,33 +52,35 @@ def test_cadastro_cria_conta_de_usuario_pendente_e_envia_link(client: TestClient
     # A ciência da Política de Privacidade fica registrada no próprio cadastro.
     assert conta.termos_versao == VERSAO_TERMOS and conta.termos_aceitos_em is not None
 
-    assert [m["destinatario"] for m in emails] == ["nova.pessoa@unifor.br"]
+    assert [m["destinatario"] for m in emails] == ["nova.pessoa@edu.unifor.br"]
     assert "senha-forte-1" not in (emails[0]["texto"] or "") + (emails[0]["html"] or "")
 
     # Só entra depois de confirmar (link + senha).
-    assert _login(client, "nova.pessoa@unifor.br", "senha-forte-1").status_code == 403
+    assert _login(client, "nova.pessoa@edu.unifor.br", "senha-forte-1").status_code == 403
     assert _confirmar(client, _token_do_email(emails[0]), "senha-forte-1").status_code == 200
-    assert _login(client, "nova.pessoa@unifor.br", "senha-forte-1").status_code == 200
+    assert _login(client, "nova.pessoa@edu.unifor.br", "senha-forte-1").status_code == 200
 
 
 @pytest.mark.parametrize(
     "email",
     [
         "pessoa@gmail.com",
-        "pessoa@aluno.unifor.br",  # subdomínio
-        "pessoa@unifor.br.com",
-        "pessoa@unifor.com.br",
-        "pessoa@unifor.br.",
-        "pessoa@xunifor.br",
-        "pessoa@unifor.br@gmail.com",
-        ".pessoa@unifor.br",
-        "pessoa.@unifor.br",
-        "pe..ssoa@unifor.br",
-        "pe ssoa@unifor.br",
-        "@unifor.br",
+        "pessoa@unifor.br",  # domínio dos funcionários: não é o do autocadastro
+        "pessoa@aluno.unifor.br",  # outro subdomínio
+        "pessoa@x.edu.unifor.br",
+        "pessoa@edu.unifor.br.com",
+        "pessoa@edu.unifor.com.br",
+        "pessoa@edu.unifor.br.",
+        "pessoa@xedu.unifor.br",
+        "pessoa@edu.unifor.br@gmail.com",
+        ".pessoa@edu.unifor.br",
+        "pessoa.@edu.unifor.br",
+        "pe..ssoa@edu.unifor.br",
+        "pe ssoa@edu.unifor.br",
+        "@edu.unifor.br",
     ],
 )
-def test_so_aceita_email_exatamente_do_dominio_unifor(client: TestClient, emails, email: str) -> None:
+def test_so_aceita_email_exatamente_do_dominio_dos_alunos(client: TestClient, emails, email: str) -> None:
     resposta = _cadastrar(client, email=email)
     assert resposta.status_code == 422, resposta.text
     assert emails == []
@@ -88,7 +90,7 @@ def test_so_aceita_email_exatamente_do_dominio_unifor(client: TestClient, emails
 
 def test_mensagem_de_dominio_errado_orienta_o_usuario(client: TestClient) -> None:
     resposta = _cadastrar(client, email="pessoa@gmail.com")
-    assert "@unifor.br" in json.dumps(resposta.json(), ensure_ascii=False)
+    assert "@edu.unifor.br" in json.dumps(resposta.json(), ensure_ascii=False)
 
 
 @pytest.mark.parametrize(
@@ -103,7 +105,7 @@ def test_mensagem_de_dominio_errado_orienta_o_usuario(client: TestClient) -> Non
 def test_nao_aceita_campos_alem_do_formulario(client: TestClient, emails, campos: dict) -> None:
     """Ninguém escolhe o próprio perfil nem pula a confirmação: campos extras são recusados."""
     assert _cadastrar(client, **campos).status_code == 422
-    assert _conta("nova.pessoa@unifor.br") is None
+    assert _conta("nova.pessoa@edu.unifor.br") is None
     assert emails == []
 
 
@@ -113,7 +115,7 @@ def test_nao_aceita_campos_alem_do_formulario(client: TestClient, emails, campos
         ({"senha": "curta12"}, "senha com menos de 8 caracteres"),
         ({"senha": " " * 10}, "senha só com espaços"),
         ({"senha": "nova.pessoa"}, "senha igual ao começo do e-mail"),
-        ({"senha": "Nova.Pessoa@unifor.br"}, "senha igual ao e-mail"),
+        ({"senha": "Nova.Pessoa@edu.unifor.br"}, "senha igual ao e-mail"),
         ({"senha": "x" * 101}, "senha acima do máximo do login"),
         ({"nome": "ab"}, "nome curto demais"),
         ({"nome": "12345"}, "nome sem letras"),
@@ -129,29 +131,29 @@ def test_versao_dos_termos_precisa_ser_a_vigente(client: TestClient, emails) -> 
     resposta = _cadastrar(client, versao_termos="1999-01")
     assert resposta.status_code == 400
     assert "Política de Privacidade" in resposta.json()["detail"]
-    assert _conta("nova.pessoa@unifor.br") is None
+    assert _conta("nova.pessoa@edu.unifor.br") is None
     assert emails == []
 
 
 def test_email_ja_confirmado_recebe_a_mesma_resposta_e_nada_muda(client: TestClient, criar_usuario, emails) -> None:
-    criar_usuario("existente@unifor.br", senha="senha-antiga-1", nome="Pessoa Existente")
-    nova = _cadastrar(client, email="nova.pessoa@unifor.br")
-    repetida = _cadastrar(client, email="existente@unifor.br", senha="senha-do-invasor")
+    criar_usuario("existente@edu.unifor.br", senha="senha-antiga-1", nome="Pessoa Existente")
+    nova = _cadastrar(client, email="nova.pessoa@edu.unifor.br")
+    repetida = _cadastrar(client, email="existente@edu.unifor.br", senha="senha-do-invasor")
 
     # Mesma resposta: a tela não revela que o e-mail já tem conta.
     assert (repetida.status_code, repetida.json()) == (nova.status_code, nova.json())
-    assert [m["destinatario"] for m in emails] == ["nova.pessoa@unifor.br"]
-    assert _login(client, "existente@unifor.br", "senha-antiga-1").status_code == 200
-    assert _login(client, "existente@unifor.br", "senha-do-invasor").status_code == 401
-    assert _conta("existente@unifor.br").nome == "Pessoa Existente"
+    assert [m["destinatario"] for m in emails] == ["nova.pessoa@edu.unifor.br"]
+    assert _login(client, "existente@edu.unifor.br", "senha-antiga-1").status_code == 200
+    assert _login(client, "existente@edu.unifor.br", "senha-do-invasor").status_code == 401
+    assert _conta("existente@edu.unifor.br").nome == "Pessoa Existente"
 
 
 def test_conta_desativada_nao_e_recriada(client: TestClient, criar_usuario, emails) -> None:
-    criar_usuario("desativada@unifor.br", senha="senha-antiga-1", ativo=False)
-    resposta = _cadastrar(client, email="desativada@unifor.br")
+    criar_usuario("desativada@edu.unifor.br", senha="senha-antiga-1", ativo=False)
+    resposta = _cadastrar(client, email="desativada@edu.unifor.br")
     assert resposta.status_code == 202
     assert emails == []
-    assert _conta("desativada@unifor.br").ativo is False
+    assert _conta("desativada@edu.unifor.br").ativo is False
 
 
 def test_pre_sequestro_de_conta_nao_funciona(client: TestClient, emails) -> None:
@@ -169,8 +171,8 @@ def test_pre_sequestro_de_conta_nao_funciona(client: TestClient, emails) -> None
     assert _confirmar(client, link_da_vitima, "senha-do-invasor").status_code == 400
     assert _confirmar(client, link_da_vitima, "senha-da-vitima").status_code == 200
 
-    assert _login(client, "nova.pessoa@unifor.br", "senha-da-vitima").status_code == 200
-    assert _login(client, "nova.pessoa@unifor.br", "senha-do-invasor").status_code == 401
+    assert _login(client, "nova.pessoa@edu.unifor.br", "senha-da-vitima").status_code == 200
+    assert _login(client, "nova.pessoa@edu.unifor.br", "senha-do-invasor").status_code == 401
 
 
 def test_recadastro_de_conta_pendente_respeita_o_limite_de_envios(client: TestClient, emails) -> None:
@@ -189,7 +191,7 @@ def test_recadastro_de_conta_pendente_respeita_o_limite_de_envios(client: TestCl
 
 def test_cadastro_e_auditado_sem_dados_pessoais(client: TestClient, emails) -> None:
     _cadastrar(client, senha="SENHA-NA-TRILHA")
-    conta = _conta("nova.pessoa@unifor.br")
+    conta = _conta("nova.pessoa@edu.unifor.br")
     with FabricaSessao() as sessao:
         [registro] = list(
             sessao.scalars(select(RegistroAuditoria).where(RegistroAuditoria.tipo == "auditoria.usuario.cadastrar"))
@@ -198,5 +200,5 @@ def test_cadastro_e_auditado_sem_dados_pessoais(client: TestClient, emails) -> N
     assert registro.ator_id == conta.id
     assert registro.entidade_id == str(conta.id)
     trilha = json.dumps(registro.dados)
-    for dado in ("SENHA-NA-TRILHA", "nova.pessoa@unifor.br", "Nova Pessoa"):
+    for dado in ("SENHA-NA-TRILHA", "nova.pessoa@edu.unifor.br", "Nova Pessoa"):
         assert dado not in trilha

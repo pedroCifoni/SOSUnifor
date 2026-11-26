@@ -33,8 +33,8 @@ def _criar_ocorrencia(client: TestClient, token: str, *, tipo: str = "manutencao
 
 # ---------- ciência dos termos ----------
 def test_aceite_de_termos_registra_versao_e_data(client: TestClient, criar_usuario) -> None:
-    criar_usuario("titular@unifor.br")
-    token = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br")
+    token = token_de(client, "titular@edu.unifor.br", "senha123")
 
     situacao = client.get("/me/termos", headers=_cabecalho(token))
     assert situacao.status_code == 200
@@ -60,30 +60,30 @@ def test_aceite_de_termos_registra_versao_e_data(client: TestClient, criar_usuar
 
 
 def test_versao_nova_dos_termos_volta_a_ficar_pendente(client: TestClient, criar_usuario) -> None:
-    usuario = criar_usuario("titular@unifor.br")
+    usuario = criar_usuario("titular@edu.unifor.br")
     with FabricaSessao() as sessao:
         registro = sessao.get(Usuario, usuario.id)
         registro.termos_versao = "versao-antiga"
         registro.termos_aceitos_em = datetime.now(timezone.utc)
         sessao.commit()
-    token = token_de(client, "titular@unifor.br", "senha123")
+    token = token_de(client, "titular@edu.unifor.br", "senha123")
     assert client.get("/me/termos", headers=_cabecalho(token)).json()["pendente"] is True
 
 
 def test_sos_funciona_sem_aceite_dos_termos(client: TestClient, criar_usuario) -> None:
     """Proteção da vida (art. 7º, VII): o aceite pendente nunca bloqueia o SOS."""
-    criar_usuario("titular@unifor.br")
-    token = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br")
+    token = token_de(client, "titular@edu.unifor.br", "senha123")
     assert client.get("/me/termos", headers=_cabecalho(token)).json()["pendente"] is True
     _criar_ocorrencia(client, token, tipo="sos")
 
 
 # ---------- acesso e portabilidade ----------
 def test_exportacao_contem_so_os_dados_do_proprio_titular(client: TestClient, criar_usuario) -> None:
-    criar_usuario("titular@unifor.br", nome="Titular Teste")
-    criar_usuario("vizinho@unifor.br", nome="Vizinho Teste")
-    titular = token_de(client, "titular@unifor.br", "senha123")
-    vizinho = token_de(client, "vizinho@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br", nome="Titular Teste")
+    criar_usuario("vizinho@edu.unifor.br", nome="Vizinho Teste")
+    titular = token_de(client, "titular@edu.unifor.br", "senha123")
+    vizinho = token_de(client, "vizinho@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
 
     minha = _criar_ocorrencia(client, titular, titulo="Minha lâmpada")
@@ -96,14 +96,14 @@ def test_exportacao_contem_so_os_dados_do_proprio_titular(client: TestClient, cr
         ).status_code == 200
     client.post("/me/termos", headers=_cabecalho(titular), json={"versao": VERSAO_TERMOS})
     with FabricaSessao() as sessao:  # conta legada com matrícula
-        sessao.scalars(select(Usuario).where(Usuario.email == "titular@unifor.br")).one().matricula = "20210001"
+        sessao.scalars(select(Usuario).where(Usuario.email == "titular@edu.unifor.br")).one().matricula = "20210001"
         sessao.commit()
 
     resposta = client.get("/me/dados", headers=_cabecalho(titular))
     assert resposta.status_code == 200, resposta.text
     dados = resposta.json()
 
-    assert dados["titular"]["email"] == "titular@unifor.br"
+    assert dados["titular"]["email"] == "titular@edu.unifor.br"
     assert dados["titular"]["matricula"] == "20210001"
     assert dados["titular"]["termosVersao"] == VERSAO_TERMOS
     assert dados["titular"]["termosAceitosEm"]
@@ -114,7 +114,7 @@ def test_exportacao_contem_so_os_dados_do_proprio_titular(client: TestClient, cr
     assert all(n["ocorrenciaId"] == minha["id"] for n in dados["notificacoes"])
 
     texto = resposta.text
-    assert "vizinho@unifor.br" not in texto
+    assert "vizinho@edu.unifor.br" not in texto
     assert "Vizinho Teste" not in texto
     assert alheia["id"] not in texto
     assert "senha" not in texto.lower()
@@ -123,11 +123,11 @@ def test_exportacao_contem_so_os_dados_do_proprio_titular(client: TestClient, cr
 
 # ---------- pedido de exclusão ----------
 def test_pedido_de_exclusao_exige_confirmacao_e_notifica_admins(client: TestClient, criar_usuario) -> None:
-    criar_usuario("titular@unifor.br", nome="Titular Teste")
-    criar_usuario("admin2@unifor.br", perfil="admin", nome="Segundo Admin")
-    titular = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br", nome="Titular Teste")
+    criar_usuario("admin2@edu.unifor.br", perfil="admin", nome="Segundo Admin")
+    titular = token_de(client, "titular@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
-    admin2 = token_de(client, "admin2@unifor.br", "senha123")
+    admin2 = token_de(client, "admin2@edu.unifor.br", "senha123")
 
     assert client.post("/me/solicitar-exclusao", headers=_cabecalho(titular), json={"confirmar": False}).status_code == 400
 
@@ -156,20 +156,20 @@ def test_pedido_de_exclusao_exige_confirmacao_e_notifica_admins(client: TestClie
 
     pedidos = client.get("/usuarios/pedidos-exclusao", headers=_cabecalho(admin))
     assert pedidos.status_code == 200
-    assert [p["email"] for p in pedidos.json()] == ["titular@unifor.br"]
+    assert [p["email"] for p in pedidos.json()] == ["titular@edu.unifor.br"]
     assert client.get("/usuarios/pedidos-exclusao", headers=_cabecalho(titular)).status_code == 403
 
 
 # ---------- anonimização ----------
 def test_anonimizacao_e_irreversivel_e_preserva_ocorrencias_sem_identificar(client: TestClient, criar_usuario) -> None:
-    titular_entidade = criar_usuario("titular@unifor.br", nome="Fulano de Tal")
-    criar_usuario("tecnico2@unifor.br", perfil="tecnico", nome="Beltrano Técnico")
-    titular = token_de(client, "titular@unifor.br", "senha123")
+    titular_entidade = criar_usuario("titular@edu.unifor.br", nome="Fulano de Tal")
+    criar_usuario("tecnico2@edu.unifor.br", perfil="tecnico", nome="Beltrano Técnico")
+    titular = token_de(client, "titular@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
 
     chamado = _criar_ocorrencia(client, titular, titulo="Ar-condicionado")
     client.post("/me/solicitar-exclusao", headers=_cabecalho(titular), json={"confirmar": True})
-    client.post("/auth/esqueci-senha", json={"email": "titular@unifor.br"})
+    client.post("/auth/esqueci-senha", json={"email": "titular@edu.unifor.br"})
 
     resposta = client.post(f"/usuarios/{titular_entidade.id}/anonimizar", headers=_cabecalho(admin))
     assert resposta.status_code == 200, resposta.text
@@ -183,7 +183,7 @@ def test_anonimizacao_e_irreversivel_e_preserva_ocorrencias_sem_identificar(clie
         assert registro.ativo is False
         assert registro.anonimizado_em is not None
         assert registro.senha_hash != titular_entidade.senha_hash
-        assert sessao.scalars(select(Usuario).where(Usuario.email == "titular@unifor.br")).first() is None
+        assert sessao.scalars(select(Usuario).where(Usuario.email == "titular@edu.unifor.br")).first() is None
         assert sessao.scalars(select(TokenRedefinicaoSenha).where(TokenRedefinicaoSenha.usuario_id == registro.id)).all() == []
         assert sessao.scalars(select(Notificacao).where(Notificacao.destinatario_id == registro.id)).all() == []
         # Nenhuma notificação (nem o aviso de pedido de exclusão enviado aos admins) guarda o nome.
@@ -194,7 +194,7 @@ def test_anonimizacao_e_irreversivel_e_preserva_ocorrencias_sem_identificar(clie
         assert ocorrencia is not None and ocorrencia.autor_id == registro.id
 
     # Não entra mais com a senha antiga.
-    assert client.post("/auth/login", json={"email": "titular@unifor.br", "senha": "senha123"}).status_code == 401
+    assert client.post("/auth/login", json={"email": "titular@edu.unifor.br", "senha": "senha123"}).status_code == 401
     # A ocorrência continua lá, sem o nome da pessoa.
     detalhe = client.get(f"/ocorrencias/{chamado['id']}", headers=_cabecalho(admin)).json()
     assert detalhe["solicitante"] == NOME_ANONIMIZADO
@@ -205,9 +205,9 @@ def test_anonimizacao_e_irreversivel_e_preserva_ocorrencias_sem_identificar(clie
 
 
 def test_anonimizacao_remove_nome_do_responsavel_dos_eventos(client: TestClient, criar_usuario) -> None:
-    criar_usuario("titular@unifor.br")
-    tecnico = criar_usuario("tecnico2@unifor.br", perfil="tecnico", nome="Beltrano Técnico")
-    titular = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br")
+    tecnico = criar_usuario("tecnico2@edu.unifor.br", perfil="tecnico", nome="Beltrano Técnico")
+    titular = token_de(client, "titular@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
     chamado = _criar_ocorrencia(client, titular)
     client.patch(f"/ocorrencias/{chamado['id']}/encaminhar", headers=_cabecalho(admin), json={"responsavelId": str(tecnico.id)})
@@ -225,10 +225,10 @@ def _texto_da_ocorrencia(client: TestClient, token: str, chamado: dict) -> str:
 
 
 def test_anonimizacao_nao_altera_eventos_de_homonimo(client: TestClient, criar_usuario) -> None:
-    criar_usuario("titular@unifor.br")
-    tecnico_a = criar_usuario("joao.a@unifor.br", perfil="tecnico", nome="Joao Silva")
-    tecnico_b = criar_usuario("joao.b@unifor.br", perfil="tecnico", nome="Joao Silva")
-    titular = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br")
+    tecnico_a = criar_usuario("joao.a@edu.unifor.br", perfil="tecnico", nome="Joao Silva")
+    tecnico_b = criar_usuario("joao.b@edu.unifor.br", perfil="tecnico", nome="Joao Silva")
+    titular = token_de(client, "titular@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
     do_a = _criar_ocorrencia(client, titular, titulo="Do A")
     do_b = _criar_ocorrencia(client, titular, titulo="Do B")
@@ -247,11 +247,11 @@ def test_anonimizacao_nao_altera_eventos_de_homonimo(client: TestClient, criar_u
 
 def test_anonimizacao_de_eventos_antigos_sem_destinatario(client: TestClient, criar_usuario) -> None:
     """Eventos gravados antes de `destinatario_id`: com homônimo, só muda onde a pessoa é a responsável."""
-    criar_usuario("titular@unifor.br")
-    tecnico_a = criar_usuario("joao.a@unifor.br", perfil="tecnico", nome="Joao Silva")
-    tecnico_b = criar_usuario("joao.b@unifor.br", perfil="tecnico", nome="Joao Silva")
-    tecnico_c = criar_usuario("maria@unifor.br", perfil="tecnico", nome="Maria Souza")
-    titular = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br")
+    tecnico_a = criar_usuario("joao.a@edu.unifor.br", perfil="tecnico", nome="Joao Silva")
+    tecnico_b = criar_usuario("joao.b@edu.unifor.br", perfil="tecnico", nome="Joao Silva")
+    tecnico_c = criar_usuario("maria@edu.unifor.br", perfil="tecnico", nome="Maria Souza")
+    titular = token_de(client, "titular@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
     do_a = _criar_ocorrencia(client, titular, titulo="Do A")
     do_b = _criar_ocorrencia(client, titular, titulo="Do B")
@@ -277,9 +277,9 @@ def test_anonimizacao_de_eventos_antigos_sem_destinatario(client: TestClient, cr
 
 
 def test_admin_nao_anonimiza_a_si_mesmo_e_so_admin_anonimiza(client: TestClient, criar_usuario) -> None:
-    outro = criar_usuario("outro@unifor.br")
+    outro = criar_usuario("outro@edu.unifor.br")
     admin = token_de(client, "admin@unifor.br")
-    usuario = token_de(client, "outro@unifor.br", "senha123")
+    usuario = token_de(client, "outro@edu.unifor.br", "senha123")
     with FabricaSessao() as sessao:
         admin_id = sessao.scalars(select(Usuario.id).where(Usuario.email == "admin@unifor.br")).one()
 
@@ -294,7 +294,7 @@ def test_ultimo_admin_nao_pode_ser_anonimizado(client: TestClient, criar_usuario
     from app.core.excecoes import RegraDeNegocioErro
     from app.services.privacidade_service import PrivacidadeService
 
-    desativado = criar_usuario("admin-antigo@unifor.br", perfil="admin", ativo=False)
+    desativado = criar_usuario("admin-antigo@edu.unifor.br", perfil="admin", ativo=False)
     with FabricaSessao() as sessao:
         unico_admin = sessao.scalars(select(Usuario).where(Usuario.email == "admin@unifor.br")).one()
         with pytest.raises(RegraDeNegocioErro, match="ao menos um administrador"):
@@ -310,7 +310,7 @@ def test_dois_admins_anonimizando_um_ao_outro_nao_zeram_os_admins(client: TestCl
     from app.repositories.usuario_repository import UsuarioRepository
     from app.services.privacidade_service import PrivacidadeService
 
-    segundo = criar_usuario("admin2@unifor.br", perfil="admin", nome="Segundo Admin")
+    segundo = criar_usuario("admin2@edu.unifor.br", perfil="admin", nome="Segundo Admin")
     with FabricaSessao() as sessao:
         primeiro_id = sessao.scalars(select(Usuario.id).where(Usuario.email == "admin@unifor.br")).one()
 
@@ -359,8 +359,8 @@ def test_contas_iniciais_nao_voltam_depois_de_anonimizadas(client: TestClient) -
 def test_rotina_de_retencao_apaga_so_o_que_venceu(client: TestClient, criar_usuario) -> None:
     from app.services.retencao_service import RetencaoService
 
-    usuario = criar_usuario("titular@unifor.br")
-    token = token_de(client, "titular@unifor.br", "senha123")
+    usuario = criar_usuario("titular@edu.unifor.br")
+    token = token_de(client, "titular@edu.unifor.br", "senha123")
     chamado = _criar_ocorrencia(client, token)
     agora = datetime.now(timezone.utc)
 
@@ -408,8 +408,8 @@ def test_rotina_de_retencao_apaga_so_o_que_venceu(client: TestClient, criar_usua
 
 # ---------- minimização ----------
 def test_email_da_equipe_so_vai_para_o_admin(client: TestClient, criar_usuario) -> None:
-    criar_usuario("titular@unifor.br")
-    usuario = token_de(client, "titular@unifor.br", "senha123")
+    criar_usuario("titular@edu.unifor.br")
+    usuario = token_de(client, "titular@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
 
     for rota in ("/usuarios/segurancas", "/usuarios/tecnicos"):

@@ -18,17 +18,17 @@ def test_factory_devolve_a_estrategia_do_formato() -> None:
 
 
 def test_csv_tem_bom_cabecalho_e_neutraliza_formulas() -> None:
-    conteudo = b"".join(ExportadorCsv().gerar(_documento([["=HYPERLINK(1)", "a@unifor.br"]])))
+    conteudo = b"".join(ExportadorCsv().gerar(_documento([["=HYPERLINK(1)", "a@edu.unifor.br"]])))
 
     texto = conteudo.decode("utf-8-sig").splitlines()
     assert conteudo.startswith(b"\xef\xbb\xbf")
     assert texto[0] == "Nome;E-mail"
-    assert texto[1] == "'=HYPERLINK(1);a@unifor.br"
+    assert texto[1] == "'=HYPERLINK(1);a@edu.unifor.br"
 
 
 def test_pdf_gera_documento_valido_mesmo_vazio_e_com_marcacao() -> None:
     vazio = b"".join(ExportadorPdf().gerar(_documento([])))
-    com_tags = ExportadorPdf().gerar_bytes(_documento([["<b>nome</b> & cia", "x@unifor.br"]]))
+    com_tags = ExportadorPdf().gerar_bytes(_documento([["<b>nome</b> & cia", "x@edu.unifor.br"]]))
 
     assert vazio.startswith(b"%PDF")
     assert com_tags.startswith(b"%PDF")

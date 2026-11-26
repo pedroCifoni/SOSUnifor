@@ -48,7 +48,7 @@ export function ReenviarConfirmacao({ email }: { email?: string }) {
           label="E-mail Institucional"
           type="email"
           autoComplete="username"
-          placeholder="nome.sobrenome@unifor.br"
+          placeholder="nome.sobrenome@edu.unifor.br"
           icon={<Mail size={18} />}
           value={digitado}
           onChange={(e) => setDigitado(e.target.value)}

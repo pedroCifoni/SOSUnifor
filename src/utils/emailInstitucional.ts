@@ -2,7 +2,7 @@
  * Regras do autocadastro. Espelham a validação da API (backend/app/dtos/base.py e auth_dto.py):
  * a API é quem decide; aqui é só para avisar a pessoa antes de enviar.
  */
-export const DOMINIO_INSTITUCIONAL = 'unifor.br'
+export const DOMINIO_INSTITUCIONAL = 'edu.unifor.br'
 export const TAMANHO_MINIMO_SENHA = 8
 export const TAMANHO_MAXIMO_SENHA = 100
 
@@ -12,7 +12,7 @@ export function normalizarEmail(email: string): string {
   return email.trim().toLowerCase()
 }
 
-/** Devolve a mensagem de erro, ou null se o e-mail é um endereço válido do domínio @unifor.br. */
+/** Devolve a mensagem de erro, ou null se o e-mail é um endereço válido do domínio @edu.unifor.br. */
 export function problemaNoEmailInstitucional(email: string): string | null {
   const normalizado = normalizarEmail(email)
   const partes = normalizado.split('@')

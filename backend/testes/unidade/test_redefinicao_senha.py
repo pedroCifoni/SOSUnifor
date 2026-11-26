@@ -16,7 +16,7 @@ def _token_do_email(texto: str) -> str:
 
 def test_redefinicao_nao_revela_email_e_invalida_token_apos_uso(client: TestClient, emails) -> None:
     existente = client.post("/auth/esqueci-senha", json={"email": "admin@unifor.br"})
-    inexistente = client.post("/auth/esqueci-senha", json={"email": "nao-existe@unifor.br"})
+    inexistente = client.post("/auth/esqueci-senha", json={"email": "nao-existe@edu.unifor.br"})
     assert existente.status_code == inexistente.status_code == 200
     assert existente.json() == inexistente.json()
     assert len(emails) == 1

@@ -42,7 +42,7 @@ export function EsqueciSenhaPage() {
             label="E-mail Institucional"
             type="email"
             autoComplete="username"
-            placeholder="nome.sobrenome@unifor.br"
+            placeholder="nome.sobrenome@edu.unifor.br"
             icon={<Mail size={18} />}
             value={email}
             onChange={(e) => setEmail(e.target.value)}

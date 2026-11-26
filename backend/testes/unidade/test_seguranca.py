@@ -18,7 +18,7 @@ def test_hash_de_senha_confere_apenas_a_senha_original() -> None:
 
 def test_jwt_valido_adulterado_e_expirado(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(configuracoes, "jwt_secret", "segredo-de-teste")
-    usuario = Usuario(id=uuid4(), nome="Teste", email="teste@unifor.br", senha_hash="x", tipo_usuario="usuario")
+    usuario = Usuario(id=uuid4(), nome="Teste", email="teste@edu.unifor.br", senha_hash="x", tipo_usuario="usuario")
     token = criar_token(usuario)
     assert ler_id_do_token(token) == usuario.id
 

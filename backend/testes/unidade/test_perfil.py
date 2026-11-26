@@ -11,12 +11,12 @@ def _cabecalho(token: str) -> dict[str, str]:
 
 
 def test_consulta_e_corrige_o_proprio_nome(client, criar_usuario) -> None:
-    criar_usuario("perfil@unifor.br", nome="Nome Antigo")
-    token = token_de(client, "perfil@unifor.br", "senha123")
+    criar_usuario("perfil@edu.unifor.br", nome="Nome Antigo")
+    token = token_de(client, "perfil@edu.unifor.br", "senha123")
 
     perfil = client.get("/me", headers=_cabecalho(token))
     assert perfil.status_code == 200
-    assert perfil.json()["email"] == "perfil@unifor.br" and perfil.json()["temAvatar"] is False
+    assert perfil.json()["email"] == "perfil@edu.unifor.br" and perfil.json()["temAvatar"] is False
 
     alterado = client.put("/me", headers=_cabecalho(token), json={"nome": "  Nome   Novo  "})
     assert alterado.status_code == 200, alterado.text
@@ -27,8 +27,8 @@ def test_consulta_e_corrige_o_proprio_nome(client, criar_usuario) -> None:
 
 
 def test_troca_de_senha_exige_a_atual_e_avisa_por_email(client, criar_usuario, emails) -> None:
-    criar_usuario("troca@unifor.br")
-    token = token_de(client, "troca@unifor.br", "senha123")
+    criar_usuario("troca@edu.unifor.br")
+    token = token_de(client, "troca@edu.unifor.br", "senha123")
 
     errada = client.put("/me/senha", headers=_cabecalho(token), json={"senhaAtual": "x", "novaSenha": "nova-senha-1"})
     assert client.put(
@@ -41,14 +41,14 @@ def test_troca_de_senha_exige_a_atual_e_avisa_por_email(client, criar_usuario, e
 
     ok = client.put("/me/senha", headers=_cabecalho(token), json={"senha_atual": "senha123", "nova_senha": "nova-senha-1"})
     assert ok.status_code == 200, ok.text
-    assert client.post("/auth/login", json={"email": "troca@unifor.br", "senha": "senha123"}).status_code == 401
-    assert client.post("/auth/login", json={"email": "troca@unifor.br", "senha": "nova-senha-1"}).status_code == 200
+    assert client.post("/auth/login", json={"email": "troca@edu.unifor.br", "senha": "senha123"}).status_code == 401
+    assert client.post("/auth/login", json={"email": "troca@edu.unifor.br", "senha": "nova-senha-1"}).status_code == 200
     assert emails[-1]["assunto"] == "Sua senha foi alterada · Uni SOS"
 
 
 def test_foto_de_perfil_valida_conteudo_e_tamanho(client, criar_usuario) -> None:
-    criar_usuario("foto@unifor.br")
-    token = token_de(client, "foto@unifor.br", "senha123")
+    criar_usuario("foto@edu.unifor.br")
+    token = token_de(client, "foto@edu.unifor.br", "senha123")
 
     assert client.get("/me/avatar", headers=_cabecalho(token)).status_code == 404
     # O tipo declarado não basta: o conteúdo precisa ser mesmo uma imagem.
@@ -69,8 +69,8 @@ def test_foto_de_perfil_valida_conteudo_e_tamanho(client, criar_usuario) -> None
 
 
 def test_admin_exporta_contas_em_csv_e_pdf_com_filtros(client, criar_usuario, token_admin) -> None:
-    criar_usuario("tecnica.export@unifor.br", nome="Técnica Exportada", perfil="tecnico")
-    criar_usuario("formula.export@unifor.br", nome="=CMD()", perfil="usuario")
+    criar_usuario("tecnica.export@edu.unifor.br", nome="Técnica Exportada", perfil="tecnico")
+    criar_usuario("formula.export@edu.unifor.br", nome="=CMD()", perfil="usuario")
 
     csv = client.get("/usuarios/exportar.csv?perfil=tecnico", headers=_cabecalho(token_admin))
     assert csv.status_code == 200, csv.text
@@ -86,5 +86,5 @@ def test_admin_exporta_contas_em_csv_e_pdf_com_filtros(client, criar_usuario, to
     assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
 
     assert client.get("/usuarios/exportar.xlsx", headers=_cabecalho(token_admin)).status_code == 422
-    comum = token_de(client, "tecnica.export@unifor.br", "senha123")
+    comum = token_de(client, "tecnica.export@edu.unifor.br", "senha123")
     assert client.get("/usuarios/exportar.csv", headers=_cabecalho(comum)).status_code == 403

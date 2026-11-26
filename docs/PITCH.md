@@ -19,7 +19,7 @@ tocando explicitamente cada critério da ficha de avaliação. Cada bloco tem um
 Preparar antes: `docker compose up`, navegador com 3 abas (usuário no **celular**, segurança, admin) e
 o Mailpit (`http://localhost:8025`) aberto. Contas de demo já confirmadas.
 
-1. **Cadastro e verificação** (40 s) — criar conta `@unifor.br` → e-mail chega no Mailpit → abrir link,
+1. **Cadastro e verificação** (40 s) — criar conta `@edu.unifor.br` → e-mail chega no Mailpit → abrir link,
    digitar a senha → conta ativa → **e-mail e notificação de boas-vindas** (evento `usuario.ativado`
    consumido pela fila `unisos.reacoes`). *Critérios: autenticação, verificação de e-mail, eventos.*
 2. **Perfil** (30 s) — trocar foto, corrigir o nome, trocar a senha; mostrar "Baixar meus dados" (LGPD).

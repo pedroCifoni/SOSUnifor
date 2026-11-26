@@ -50,8 +50,8 @@ def _cadastrar(client: TestClient, email: str, senha: str = "SENHA-CADASTRO-1", 
 
 # ---------- aspectos aplicados aos services ----------
 def test_criar_ocorrencia_audita_e_publica_evento_sem_conteudo_da_denuncia(client: TestClient, criar_usuario) -> None:
-    autor = criar_usuario("autor@unifor.br", nome="Autor")
-    token = token_de(client, "autor@unifor.br", "senha123")
+    autor = criar_usuario("autor@edu.unifor.br", nome="Autor")
+    token = token_de(client, "autor@edu.unifor.br", "senha123")
     resposta = client.post(
         "/ocorrencias",
         headers={**_cabecalho(token), "X-Request-ID": "req-teste-123"},
@@ -77,8 +77,8 @@ def test_criar_ocorrencia_audita_e_publica_evento_sem_conteudo_da_denuncia(clien
 
 
 def test_denuncia_anonima_nao_revela_o_autor_na_auditoria(client: TestClient, criar_usuario) -> None:
-    criar_usuario("anonimo@unifor.br")
-    token = token_de(client, "anonimo@unifor.br", "senha123")
+    criar_usuario("anonimo@edu.unifor.br")
+    token = token_de(client, "anonimo@edu.unifor.br", "senha123")
     resposta = client.post(
         "/ocorrencias",
         headers=_cabecalho(token),
@@ -89,8 +89,8 @@ def test_denuncia_anonima_nao_revela_o_autor_na_auditoria(client: TestClient, cr
 
 
 def test_encaminhar_e_mudar_status_sao_auditados(client: TestClient, criar_usuario) -> None:
-    criar_usuario("autor@unifor.br")
-    autor = token_de(client, "autor@unifor.br", "senha123")
+    criar_usuario("autor@edu.unifor.br")
+    autor = token_de(client, "autor@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
     tecnico_id = _id_do_usuario("tecnico@unifor.br")
     ocorrencia = client.post(
@@ -136,8 +136,8 @@ def test_erro_de_negocio_e_auditado_com_resultado_erro_sem_valores(client: TestC
 def test_edicao_exclusao_e_lote_sao_auditados_sem_valores_sensiveis(
     client: TestClient, token_admin: str, criar_usuario
 ) -> None:
-    pessoa = criar_usuario("pessoa@unifor.br", nome="Nome Original")
-    outra = criar_usuario("outra@unifor.br")
+    pessoa = criar_usuario("pessoa@edu.unifor.br", nome="Nome Original")
+    outra = criar_usuario("outra@edu.unifor.br")
     editado = client.put(
         f"/usuarios/{pessoa.id}", headers=_cabecalho(token_admin), json={"nome": "NOME-NOVO-1", "perfil": "tecnico"}
     )
@@ -158,7 +158,7 @@ def test_edicao_exclusao_e_lote_sao_auditados_sem_valores_sensiveis(
     [exclusao] = _registros("auditoria.usuario.excluir")
     assert exclusao.resultado == "sucesso" and exclusao.entidade_id == str(pessoa.id)
     tudo = json.dumps([r.dados for r in _registros()])
-    for segredo in ("NOME-NOVO-1", "NOME-LOTE-1", "pessoa@unifor.br", "outra@unifor.br"):
+    for segredo in ("NOME-NOVO-1", "NOME-LOTE-1", "pessoa@edu.unifor.br", "outra@edu.unifor.br"):
         assert segredo not in tudo
 
 def test_redefinir_senha_auditada_com_o_dono_do_link_e_sem_token(client: TestClient, emails, monkeypatch) -> None:
@@ -190,8 +190,8 @@ def test_redefinir_senha_auditada_com_o_dono_do_link_e_sem_token(client: TestCli
 def test_lote_de_usuarios_audita_cada_conta_afetada(client: TestClient, token_admin: str, criar_usuario) -> None:
     """O painel de usuários só usa POST /usuarios/lote: a trilha precisa dizer QUAIS contas mudaram."""
     cabecalho = {**_cabecalho(token_admin), "X-Request-ID": "req-lote-1"}
-    editar = criar_usuario("editar@unifor.br", nome="Editar")
-    excluir = criar_usuario("excluir@unifor.br", nome="Excluir")
+    editar = criar_usuario("editar@edu.unifor.br", nome="Editar")
+    excluir = criar_usuario("excluir@edu.unifor.br", nome="Excluir")
     lote = client.post(
         "/usuarios/lote",
         headers=cabecalho,
@@ -218,7 +218,7 @@ def test_lote_de_usuarios_audita_cada_conta_afetada(client: TestClient, token_ad
     assert "Novo Nome" not in json.dumps([r.dados for r in do_lote])
 
 def test_lote_que_falha_nao_registra_itens(client: TestClient, token_admin: str, criar_usuario) -> None:
-    editar = criar_usuario("editar@unifor.br")
+    editar = criar_usuario("editar@edu.unifor.br")
     resposta = client.post(
         "/usuarios/lote",
         headers={**_cabecalho(token_admin), "X-Request-ID": "req-lote-2"},
@@ -233,8 +233,8 @@ def test_falha_na_auditoria_nao_derruba_a_operacao(client: TestClient, monkeypat
         raise RuntimeError("banco de auditoria fora do ar")
 
     monkeypatch.setattr("app.services.auditoria_service.gravar_evento", falhar)
-    assert _cadastrar(client, "nova@unifor.br").status_code == 202
-    assert _id_do_usuario("nova@unifor.br") is not None
+    assert _cadastrar(client, "nova@edu.unifor.br").status_code == 202
+    assert _id_do_usuario("nova@edu.unifor.br") is not None
 
 def test_com_broker_o_evento_vai_para_a_fila_e_nao_para_o_banco(client: TestClient, token_admin: str, monkeypatch) -> None:
     publicados: list[Evento] = []
@@ -534,16 +534,16 @@ def test_consumidor_de_metricas_conta_ocorrencias_por_tipo(caplog) -> None:
 
 # ---------- GET /auditoria ----------
 def test_auditoria_so_para_admin(client: TestClient, criar_usuario) -> None:
-    criar_usuario("comum@unifor.br")
+    criar_usuario("comum@edu.unifor.br")
     assert client.get("/auditoria").status_code == 401
-    for email, senha in (("comum@unifor.br", "senha123"), ("seguranca@unifor.br", "123456"), ("tecnico@unifor.br", "123456")):
+    for email, senha in (("comum@edu.unifor.br", "senha123"), ("seguranca@unifor.br", "123456"), ("tecnico@unifor.br", "123456")):
         assert client.get("/auditoria", headers=_cabecalho(token_de(client, email, senha))).status_code == 403
     assert client.get("/auditoria", headers=_cabecalho(token_de(client, "admin@unifor.br"))).status_code == 200
 
 
 def test_auditoria_paginada_por_cursor_e_filtrada(client: TestClient, token_admin: str) -> None:
     for indice in range(3):
-        assert _cadastrar(client, f"p{indice}@unifor.br", nome=f"Pessoa {indice}").status_code == 202
+        assert _cadastrar(client, f"p{indice}@edu.unifor.br", nome=f"Pessoa {indice}").status_code == 202
     client.delete(f"/usuarios/{uuid4()}", headers=_cabecalho(token_admin))
 
     pagina = client.get("/auditoria?limite=2", headers=_cabecalho(token_admin)).json()

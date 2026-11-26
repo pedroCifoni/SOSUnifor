@@ -18,10 +18,10 @@ def _criar(client: TestClient, token: str, *, tipo: str, anonima: bool = False) 
 
 
 def test_visibilidade_cancelamento_e_denuncia_anonima(client: TestClient, criar_usuario) -> None:
-    criar_usuario("autor@unifor.br", nome="Autor")
-    criar_usuario("outro@unifor.br", nome="Outro")
-    autor = token_de(client, "autor@unifor.br", "senha123")
-    outro = token_de(client, "outro@unifor.br", "senha123")
+    criar_usuario("autor@edu.unifor.br", nome="Autor")
+    criar_usuario("outro@edu.unifor.br", nome="Outro")
+    autor = token_de(client, "autor@edu.unifor.br", "senha123")
+    outro = token_de(client, "outro@edu.unifor.br", "senha123")
     admin = token_de(client, "admin@unifor.br")
 
     sos = _criar(client, autor, tipo="sos")
@@ -45,10 +45,10 @@ def test_anexo_de_outra_ocorrencia_nao_pode_ser_reaproveitado(client: TestClient
     """Quem sabe o nome de um arquivo alheio não pode citá-lo na própria ocorrência para baixá-lo."""
     from app.core.config import PASTA_ARQUIVOS
 
-    criar_usuario("vitima@unifor.br", nome="Vítima")
-    criar_usuario("atacante@unifor.br", nome="Atacante")
-    vitima = token_de(client, "vitima@unifor.br", "senha123")
-    atacante = token_de(client, "atacante@unifor.br", "senha123")
+    criar_usuario("vitima@edu.unifor.br", nome="Vítima")
+    criar_usuario("atacante@edu.unifor.br", nome="Atacante")
+    vitima = token_de(client, "vitima@edu.unifor.br", "senha123")
+    atacante = token_de(client, "atacante@edu.unifor.br", "senha123")
 
     envio = client.post(
         "/arquivos",

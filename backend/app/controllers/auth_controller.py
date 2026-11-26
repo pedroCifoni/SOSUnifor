@@ -50,7 +50,7 @@ def sair(dados: RenovarSessaoEntrada, servico: Annotated[AuthService, Depends(au
 
 @router.post("/cadastro", status_code=status.HTTP_202_ACCEPTED, response_model=MensagemResposta)
 def cadastrar(dados: CadastroEntrada, servico: Annotated[CadastroService, Depends(cadastro_service)]) -> MensagemResposta:
-    """Autocadastro com e-mail @unifor.br. A resposta é sempre a mesma, exista ou não conta com o e-mail.
+    """Autocadastro com e-mail @edu.unifor.br. A resposta é sempre a mesma, exista ou não conta com o e-mail.
 
     A conta nasce com o perfil "usuario" e só entra depois de confirmar o e-mail (link + senha).
     """

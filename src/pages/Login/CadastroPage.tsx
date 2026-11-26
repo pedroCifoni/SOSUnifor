@@ -17,7 +17,7 @@ import {
 import { CartaoAcesso } from './CartaoAcesso'
 import { ReenviarConfirmacao } from './ReenviarConfirmacao'
 
-/** Autocadastro com e-mail @unifor.br. A conta nasce com o perfil "usuario" e precisa confirmar o e-mail. */
+/** Autocadastro com e-mail @edu.unifor.br. A conta nasce com o perfil "usuario" e precisa confirmar o e-mail. */
 export function CadastroPage() {
   const { usuario } = useAuth()
   const [nome, setNome] = useState('')

@@ -339,7 +339,7 @@ export function UsuariosPage() {
 
       <p className="flex items-start gap-2 rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-900">
         <Info size={14} className="mt-0.5 shrink-0 text-brand-500" aria-hidden />
-        As contas são criadas pelas próprias pessoas, com o e-mail @unifor.br, na opção “Criar conta” do login. Aqui
+        As contas são criadas pelas próprias pessoas, com o e-mail @edu.unifor.br, na opção “Criar conta” do login. Aqui
         você muda o perfil, corrige o nome, desativa e reativa contas.
       </p>
 
