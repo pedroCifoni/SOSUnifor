@@ -16,7 +16,7 @@ from uuid import UUID
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.aspectos import auditar
+from app.core.aspectos import auditar, publicar_evento
 from app.core.excecoes import RegraDeNegocioErro
 from app.core.privacidade import VERSAO_TERMOS
 from app.core.seguranca import gerar_hash_senha
@@ -70,6 +70,14 @@ class CadastroService:
         entidade_id=_conta_afetada,
         ator=_conta_afetada,
         registrar_se=lambda _ponto, resultado: resultado is not None,
+    )
+    @publicar_evento(
+        "usuario.criado",
+        entidade="usuario",
+        entidade_id=_conta_afetada,
+        ator=_conta_afetada,
+        dados=lambda _ponto, _resultado: {"perfil": PERFIL_DO_AUTOCADASTRO, "origem": "autocadastro"},
+        publicar_se=lambda _ponto, resultado: resultado is not None,
     )
     def _criar_conta(self, dados: CadastroEntrada, senha_hash: str, agora: datetime) -> UUID | None:
         usuario = self.usuarios.adicionar(

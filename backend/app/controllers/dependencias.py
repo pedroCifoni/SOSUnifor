@@ -18,6 +18,7 @@ from app.services.cadastro_service import CadastroService
 from app.services.email_service import EmailService
 from app.services.notificacao_service import NotificacaoService
 from app.services.ocorrencia_service import OcorrenciaService
+from app.services.perfil_service import PerfilService
 from app.services.privacidade_service import PrivacidadeService
 from app.services.relatorio_service import RelatorioService
 from app.services.usuario_service import UsuarioService
@@ -61,6 +62,10 @@ def verificacao_email_service(banco: Banco, tarefas: BackgroundTasks) -> Verific
 
 def usuario_service(banco: Banco, tarefas: BackgroundTasks) -> UsuarioService:
     return UsuarioService(banco, emails=_emails(tarefas))
+
+
+def perfil_service(banco: Banco, tarefas: BackgroundTasks) -> PerfilService:
+    return PerfilService(banco, emails=_emails(tarefas))
 
 
 def area_campus_service(banco: Banco) -> AreaCampusService:

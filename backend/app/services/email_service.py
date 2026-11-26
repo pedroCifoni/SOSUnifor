@@ -83,6 +83,23 @@ Se você não fez este pedido, ignore este e-mail: sua senha continua a mesma.</
         )
         self.agendar(enviar_email, email, "Redefinição de senha · Uni SOS", texto, html)
 
+    def enviar_boas_vindas(self, nome: str, email: str) -> None:
+        link = _link_do_sistema("/login")
+        texto = (
+            f"Olá, {nome}!\n\n"
+            "Sua conta no Uni SOS está ativa. Em uma emergência no campus, abra o app e segure o botão SOS.\n"
+            "Você também pode abrir chamados de manutenção e fazer denúncias, inclusive anônimas.\n\n"
+            f"Entrar: {link}"
+        )
+        html = _html(
+            "Bem-vindo(a) ao Uni SOS",
+            f"""<p>Olá, {escape(nome)}!</p>
+<p>Sua conta está ativa. Em uma emergência no campus, abra o app e segure o botão <b>SOS</b>.</p>
+<p>Você também pode abrir chamados de manutenção e fazer denúncias, inclusive anônimas.</p>
+{_botao(link, "Entrar no Uni SOS")}""",
+        )
+        self.agendar(enviar_email, email, "Bem-vindo(a) ao Uni SOS", texto, html)
+
     def enviar_aviso_senha_alterada(self, nome: str, email: str) -> None:
         texto = (
             f"Olá, {nome}!\n\n"

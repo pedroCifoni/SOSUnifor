@@ -10,6 +10,7 @@ from aio_pika import ExchangeType, Message
 from app.core.config import configuracoes
 from app.core.tempo_real import gerenciador_notificacoes
 
+
 logger = logging.getLogger(__name__)
 
 NOME_DA_EXCHANGE = "notificacoes"

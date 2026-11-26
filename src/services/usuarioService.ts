@@ -44,6 +44,19 @@ export const usuarioService = {
     return http.get<ResumoUsuarios>(`/usuarios/resumo${query}`)
   },
 
+  /** Lista de contas (mesmos filtros da tela) em CSV ou PDF. */
+  exportar(
+    formato: 'csv' | 'pdf',
+    filtros: Pick<FiltrosUsuarios, 'busca' | 'perfil' | 'situacao'> = {},
+  ): Promise<{ arquivo: Blob; nome: string | null }> {
+    const query = montarQuery({
+      busca: filtros.busca?.trim() || undefined,
+      perfil: filtros.perfil,
+      situacao: filtros.situacao,
+    })
+    return http.baixarArquivoComNome(`/usuarios/exportar.${formato}${query}`)
+  },
+
   listarSegurancas(): Promise<Usuario[]> {
     return http.get<Usuario[]>('/usuarios/segurancas')
   },

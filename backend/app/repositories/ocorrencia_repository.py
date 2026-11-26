@@ -4,8 +4,7 @@ from uuid import UUID
 from zoneinfo import ZoneInfo
 
 from sqlalchemy import Text, cast, func, select, tuple_
-from sqlalchemy.orm import aliased
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 
 from app.entities.ocorrencia import Ocorrencia
 from app.entities.usuario import Usuario

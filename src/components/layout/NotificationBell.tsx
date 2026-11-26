@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Bell, CheckCircle2, ShieldCheck, Siren, Send, SquarePlus, type LucideIcon } from 'lucide-react'
+import { Bell, CheckCircle2, PartyPopper, ShieldCheck, Siren, Send, SquarePlus, type LucideIcon } from 'lucide-react'
 import { useNotificacoes } from '@/hooks/useNotificacoes'
 import type { TipoNotificacao } from '@/models/notificacao'
 import { tempoRelativo } from '@/utils/format'
@@ -10,6 +10,7 @@ const ICONES: Record<TipoNotificacao, LucideIcon> = {
   concluida: CheckCircle2,
   alerta: Siren,
   privacidade: ShieldCheck,
+  boas_vindas: PartyPopper,
 }
 
 export function NotificationBell() {
@@ -46,7 +47,7 @@ export function NotificationBell() {
             </div>
             <ul className="max-h-[60vh] divide-y divide-line overflow-y-auto">
               {notificacoes.map((n) => {
-                const Icone = ICONES[n.tipo]
+                const Icone = ICONES[n.tipo] ?? Bell
                 return (
                   <li key={n.id} className={`flex gap-3 px-4 py-3 ${n.lida ? '' : 'bg-brand-50/60'}`}>
                     <span

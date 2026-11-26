@@ -1,4 +1,4 @@
-export type TipoNotificacao = 'criada' | 'encaminhada' | 'concluida' | 'alerta' | 'privacidade'
+export type TipoNotificacao = 'criada' | 'encaminhada' | 'concluida' | 'alerta' | 'privacidade' | 'boas_vindas'
 
 export interface Notificacao {
   id: string

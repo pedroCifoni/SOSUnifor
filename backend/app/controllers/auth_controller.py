@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, Request, status
 
 from app.controllers.dependencias import auth_service, auth_service_com_email, cadastro_service, verificacao_email_service
 from app.dtos.auth_dto import (
@@ -8,8 +8,9 @@ from app.dtos.auth_dto import (
     EsqueciSenhaEntrada,
     LoginEntrada,
     MensagemResposta,
-    ReenviarVerificacaoEntrada,
     RedefinirSenhaEntrada,
+    ReenviarVerificacaoEntrada,
+    RenovarSessaoEntrada,
     TokenResposta,
     VerificarEmailEntrada,
 )
@@ -24,9 +25,27 @@ ServicoVerificacao = Annotated[VerificacaoEmailService, Depends(verificacao_emai
 
 
 @router.post("/login", response_model=TokenResposta)
-def entrar(dados: LoginEntrada, servico: Annotated[AuthService, Depends(auth_service)]) -> TokenResposta:
-    """401 para credenciais inválidas; 403 com `codigo: "email_nao_verificado"` se a senha confere mas o e-mail não."""
-    return servico.entrar(dados)
+def entrar(
+    dados: LoginEntrada, requisicao: Request, servico: Annotated[AuthService, Depends(auth_service)]
+) -> TokenResposta:
+    """401 para credenciais inválidas; 403 com `codigo: "email_nao_verificado"` se a senha confere mas o e-mail não.
+
+    429 depois de muitas falhas seguidas para o mesmo e-mail ou IP (proteção contra força bruta).
+    Devolve o access token (JWT) e um refresh token para POST /auth/renovar.
+    """
+    ip = requisicao.client.host if requisicao.client else None
+    return servico.entrar(dados, ip)
+
+
+@router.post("/renovar", response_model=TokenResposta)
+def renovar(dados: RenovarSessaoEntrada, servico: Annotated[AuthService, Depends(auth_service)]) -> TokenResposta:
+    """Rotação: devolve um par novo e invalida o refresh token enviado. Reuso de um token antigo encerra todas as sessões."""
+    return servico.renovar(dados)
+
+
+@router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
+def sair(dados: RenovarSessaoEntrada, servico: Annotated[AuthService, Depends(auth_service)]) -> None:
+    servico.sair(dados)
 
 
 @router.post("/cadastro", status_code=status.HTTP_202_ACCEPTED, response_model=MensagemResposta)

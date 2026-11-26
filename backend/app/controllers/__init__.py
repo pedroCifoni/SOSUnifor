@@ -7,6 +7,7 @@ from app.controllers import (
     auth_controller,
     notificacao_controller,
     ocorrencia_controller,
+    perfil_controller,
     privacidade_controller,
     relatorio_controller,
     saude_controller,
@@ -14,10 +15,12 @@ from app.controllers import (
     usuario_controller,
 )
 
+
 routers = [
     auth_controller.router,
     # Antes de usuario_controller: GET /usuarios/pedidos-exclusao não pode ser capturada por /usuarios/{id}.
     privacidade_controller.router,
+    perfil_controller.router,
     usuario_controller.router,
     area_campus_controller.router,
     ocorrencia_controller.router,

@@ -9,9 +9,11 @@ from app.controllers import routers
 from app.core import eventos, mensageria
 from app.core.aspecto_http import AspectoHttp, instalar_mascaramento_de_logs
 from app.core.aspectos import tecer_aspectos_transversais
+from app.core.cabecalhos_seguranca import CabecalhosSeguranca
 from app.core.config import configuracoes, obter_origens_cors, validar_configuracao_de_producao
 from app.core.excecoes import ErroAplicacao
 from app.core.inicializacao_banco import inicializar_banco
+from app.services import boas_vindas_service  # noqa: F401  (registra os observadores de eventos)
 
 
 def regex_origem_de_rede_em_desenvolvimento() -> str | None:
@@ -52,6 +54,7 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Request-ID"],
 )
+app.add_middleware(CabecalhosSeguranca)
 # Registrado por último = camada mais externa: mede e identifica a requisição inteira.
 app.add_middleware(AspectoHttp)
 

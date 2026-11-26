@@ -1,0 +1,24 @@
+# Lint do back-end (rodado no CI: python -m ruff check .)
+line-length = 130
+target-version = "py312"
+extend-exclude = [".venv", "uploads"]
+
+[lint]
+# E/W: estilo PEP 8 · F: erros (nomes indefinidos, imports sem uso) · I: ordem dos imports
+# B: armadilhas comuns (bugbear) · UP: sintaxe moderna · S: segurança (bandit) · SIM: simplificações
+select = ["E", "W", "F", "I", "B", "UP", "S", "SIM"]
+ignore = [
+    "E501",  # comprimento de linha fica com o formatador
+    "B008",  # Depends()/File() nos parâmetros é o padrão do FastAPI
+    "S105",  # nomes como "token"/"senha" em constantes de mensagem não são segredos
+    "S106",
+    "UP017",  # timezone.utc é mais legível para a equipe que datetime.UTC
+]
+
+[lint.per-file-ignores]
+"testes/**" = ["S101", "S105", "S106", "S310", "S311"]  # assert e senhas de teste são esperados nos testes
+"scripts/**" = ["S"]
+
+[lint.isort]
+known-first-party = ["app", "testes"]
+lines-after-imports = 2

@@ -14,6 +14,10 @@ class NotificacaoRepository:
     def adicionar(self, notificacao: Notificacao) -> None:
         self.sessao.add(notificacao)
 
+    def existe_do_tipo(self, destinatario_id: UUID, tipo: str) -> bool:
+        consulta = select(Notificacao.id).where(Notificacao.destinatario_id == destinatario_id, Notificacao.tipo == tipo).limit(1)
+        return self.sessao.scalar(consulta) is not None
+
     def listar_do_destinatario(
         self,
         destinatario_id: UUID,

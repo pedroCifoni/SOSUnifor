@@ -57,6 +57,8 @@ As contas são criadas pelas próprias pessoas em **Criar conta** (`/cadastro`),
 
 A API cria as tabelas, os índices e os usuários iniciais sozinha na primeira vez que sobe, então não é preciso rodar migração manual.
 
+O estilo é um **monólito modular em camadas, orientado a eventos** (RabbitMQ) e com interesses transversais em aspectos (POA). A justificativa, os diagramas C4 e o fluxo de eventos estão em [docs/ARQUITETURA.md](docs/ARQUITETURA.md); os padrões de projeto, em [docs/PADROES.md](docs/PADROES.md); POA e eventos, em [docs/POA-e-eventos.md](docs/POA-e-eventos.md); LGPD, em [docs/LGPD.md](docs/LGPD.md).
+
 ## Estrutura do repositório
 
 ```

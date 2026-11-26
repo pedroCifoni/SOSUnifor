@@ -223,7 +223,7 @@ def test_status_de_confirmacao_so_aparece_para_o_admin(client: TestClient, token
 def test_links_nao_guardam_o_endereco_e_somem_com_a_conta(client: TestClient, token_admin: str, emails) -> None:
     _cadastrar(client, email="privacidade@unifor.br")
     with engine.connect() as conexao:
-        colunas = {c for c in conexao.execute(text("SELECT * FROM tokens_verificacao_email LIMIT 0")).keys()}
+        colunas = set(conexao.execute(text("SELECT * FROM tokens_verificacao_email LIMIT 0")).keys())
         linhas = conexao.execute(text("SELECT * FROM tokens_verificacao_email")).all()
     assert "email" not in colunas
     assert linhas and all("privacidade@unifor.br" not in str(valor) for linha in linhas for valor in linha)
@@ -287,3 +287,24 @@ def test_migracao_tira_o_email_em_claro_dos_links(client: TestClient, emails) ->
     assert _confirmar(client, _token_do_email(emails[0])).status_code == 400
     client.post("/auth/reenviar-verificacao", json={"email": "nova@unifor.br"})
     assert _confirmar(client, _token_do_email(emails[-1])).status_code == 200
+
+
+def test_ativacao_publica_evento_e_observador_da_boas_vindas(client: TestClient, emails) -> None:
+    """usuario.ativado → observador (sem broker, chamado no próprio processo) → notificação + e-mail."""
+    from app.entities.notificacao import Notificacao
+    from app.entities.registro_auditoria import RegistroAuditoria
+
+    _cadastrar(client, "boasvindas@unifor.br")
+    assert _confirmar(client, _token_do_email(emails[0])).status_code == 200
+
+    assert [m["assunto"] for m in emails][-1] == "Bem-vindo(a) ao Uni SOS"
+    with FabricaSessao() as sessao:
+        tipos = set(sessao.scalars(select(RegistroAuditoria.tipo)))
+        notificacoes = list(sessao.scalars(select(Notificacao).where(Notificacao.tipo == "boas_vindas")))
+    assert {"usuario.criado", "usuario.ativado"} <= tipos
+    assert len(notificacoes) == 1
+
+    # Confirmar de novo (link já usado) não repete as boas-vindas.
+    assert _confirmar(client, _token_do_email(emails[0])).status_code == 400
+    with FabricaSessao() as sessao:
+        assert sessao.scalar(select(func.count()).select_from(Notificacao).where(Notificacao.tipo == "boas_vindas")) == 1

@@ -9,7 +9,7 @@ PASTA_ARQUIVOS = PASTA_SERVICO / "uploads"
 
 
 class Configuracoes(BaseSettings):
-    app_name: str = "Auth Service"
+    app_name: str = "Uni SOS API"
     ambiente: str = "desenvolvimento"
     database_url: str = "postgresql+psycopg://unisos:uni12345@localhost:5433/unisos"
 
@@ -23,6 +23,12 @@ class Configuracoes(BaseSettings):
     jwt_secret: str = "chave-exclusiva-para-desenvolvimento-local-nao-publicar"
     jwt_algorithm: str = "HS256"
     access_token_expire_minutes: int = 60
+    # Refresh token (POST /auth/renovar): renova o access token sem pedir a senha de novo.
+    refresh_token_expire_dias: int = 7
+    # Força bruta no login: falhas permitidas por e-mail e por IP dentro da janela.
+    login_max_falhas_por_email: int = 5
+    login_max_falhas_por_ip: int = 30
+    login_janela_falhas_minutos: int = 15
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173"
     rabbitmq_url: str = "amqp://unisos:uni12345@localhost:5672/"
     # Aspecto medir_desempenho: chamadas de service acima deste tempo são registradas no log.

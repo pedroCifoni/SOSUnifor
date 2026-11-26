@@ -203,7 +203,8 @@ a mensagem de negócio), `duracao_ms` e `detalhes`.
 | `unisos.eventos` | exchange **topic**, durável | Recebe todos os eventos |
 | `unisos.auditoria` | fila durável, binding `#` | Grava todo evento na tabela `auditoria` |
 | `unisos.metricas` | fila durável, binding `ocorrencia.*` | Conta ocorrências por tipo e registra indicadores no log (por processo, ver abaixo) |
-| `unisos.eventos.dlx` | exchange fanout, durável | *Dead-letter exchange* das duas filas |
+| `unisos.reacoes` | fila durável, um binding por assinante (`usuario.ativado`) | Reações de negócio registradas com `@eventos.assinar` (padrão Observer). Hoje: boas-vindas por e-mail e no sino (`services/boas_vindas_service.py`) |
+| `unisos.eventos.dlx` | exchange fanout, durável | *Dead-letter exchange* das três filas |
 | `unisos.eventos.mortos` | fila durável | Mensagens rejeitadas, para análise |
 | `notificacoes` | exchange fanout (já existia) | Aviso dos WebSockets entre instâncias; não mudou |
 

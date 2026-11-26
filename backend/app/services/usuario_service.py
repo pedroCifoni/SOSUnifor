@@ -5,12 +5,14 @@ só consulta, muda o perfil, corrige o nome, desativa e reativa contas. E-mail e
 o e-mail é comprovado por ele (link de confirmação) e a senha só ele conhece ("Esqueci minha senha").
 """
 
+from collections.abc import Iterator
 from uuid import UUID
 
 from sqlalchemy.orm import Session
 
 from app.core.aspectos import auditar, nomes_dos_campos_enviados
 from app.core.excecoes import NaoEncontradoErro, RegraDeNegocioErro
+from app.core.exportacao import DocumentoTabular, Exportador
 from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
     LIMITE_PADRAO_USUARIOS,
@@ -75,6 +77,44 @@ class UsuarioService:
         self, *, desativados: bool = False, busca: str | None = None, perfil: str | None = None
     ) -> ResumoUsuariosResposta:
         return ResumoUsuariosResposta(total=self.usuarios.contar(desativados=desativados, busca=busca, perfil=perfil))
+
+    @auditar("usuario.exportar", entidade="usuario", detalhes=lambda ponto, _r: {"formato": ponto.argumentos["exportador"].extensao})
+    def exportar(
+        self,
+        exportador: Exportador,
+        *,
+        desativados: bool = False,
+        busca: str | None = None,
+        perfil: str | None = None,
+    ) -> Iterator[bytes]:
+        """Lista de contas em CSV ou PDF (Strategy escolhida pela factory no controller)."""
+        nomes_perfil = {"usuario": "Usuário", "seguranca": "Segurança", "tecnico": "Técnico", "admin": "Administrador"}
+        linhas = (
+            [
+                usuario.nome,
+                usuario.email,
+                nomes_perfil.get(usuario.tipo_usuario, usuario.tipo_usuario),
+                "Sim" if usuario.email_verificado_em else "Não",
+                "Ativa" if usuario.ativo else "Desativada",
+                usuario.ultimo_acesso.strftime("%d/%m/%Y %H:%M") if usuario.ultimo_acesso else "Nunca",
+            ]
+            for usuario in self.usuarios.iterar_para_exportacao(desativados=desativados, busca=busca, perfil=perfil)
+        )
+        filtros = [
+            f"situação: {'desativadas' if desativados else 'ativas'}",
+            f"perfil: {nomes_perfil[perfil] if perfil else 'todos'}",
+        ]
+        if busca:
+            filtros.append(f"busca: {busca}")
+        documento = DocumentoTabular(
+            titulo="Contas de usuários · Uni SOS",
+            cabecalho=("Nome", "E-mail", "Perfil", "E-mail confirmado", "Situação", "Último acesso"),
+            linhas=linhas if exportador.extensao == "csv" else list(linhas),
+            informacoes=[f"Filtros: {' · '.join(filtros)}"],
+            larguras_mm=(60, 70, 30, 30, 30, 35),
+            mensagem_vazio="Nenhuma conta encontrada.",
+        )
+        return exportador.gerar(documento)
 
     def listar_por_perfil(self, perfil: str, com_email: bool = False) -> list[UsuarioResposta]:
         return [

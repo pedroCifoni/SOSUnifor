@@ -7,14 +7,14 @@ on:
 
 jobs:
   backend:
-    name: Backend (pytest)
+    name: Backend (lint + pytest)
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:17-alpine
         env:
           POSTGRES_USER: unisos
-          POSTGRES_PASSWORD: uni12345  
+          POSTGRES_PASSWORD: uni12345
           POSTGRES_DB: unisos_testes
         ports:
           - 5433:5432
@@ -36,6 +36,8 @@ jobs:
             backend/requirements.txt
             backend/requirements-dev.txt
       - run: pip install -r requirements.txt -r requirements-dev.txt
+      - name: Lint (ruff)
+        run: python -m ruff check .
       - run: python -m pytest testes/unidade
         env:
           TESTES_DATABASE_URL: postgresql+psycopg://unisos:uni12345@localhost:5433/unisos_testes

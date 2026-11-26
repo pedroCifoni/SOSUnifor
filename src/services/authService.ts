@@ -1,13 +1,35 @@
 import { http } from '@/api/client'
+import { API_URL } from '@/api/config'
 import type { Credenciais, DadosCadastro, LoginResponse } from '@/models/usuario'
 
 interface MensagemResposta {
   mensagem: string
 }
 
+/** Chamadas de sessão sem o interceptador de 401 do cliente (que dispararia o próprio logout). */
+async function postarSessao(caminho: string, refreshToken: string): Promise<Response> {
+  return fetch(`${API_URL}${caminho}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ refresh_token: refreshToken }),
+  })
+}
+
 export const authService = {
   login(credenciais: Credenciais): Promise<LoginResponse> {
     return http.post<LoginResponse>('/auth/login', credenciais)
+  },
+
+  /** Troca o refresh token por um par novo (o antigo deixa de valer). Devolve null se a sessão acabou. */
+  async renovar(refreshToken: string): Promise<LoginResponse | null> {
+    const resposta = await postarSessao('/auth/renovar', refreshToken)
+    if (resposta.status === 401) return null
+    if (!resposta.ok) throw new Error(`Erro ${resposta.status}`)
+    return resposta.json()
+  },
+
+  async logout(refreshToken: string): Promise<void> {
+    await postarSessao('/auth/logout', refreshToken).catch(() => undefined)
   },
 
   esqueciSenha(email: string): Promise<MensagemResposta> {

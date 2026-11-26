@@ -20,6 +20,7 @@ from sqlalchemy.orm import Session
 from app.core.config import configuracoes
 from app.entities.notificacao import Notificacao
 from app.entities.token_redefinicao_senha import TokenRedefinicaoSenha
+from app.repositories.sessao_repository import TentativaLoginRepository, TokenSessaoRepository
 
 
 @dataclass(frozen=True)
@@ -47,5 +48,8 @@ class RetencaoService:
         notificacoes = self.sessao.execute(
             delete(Notificacao).where(Notificacao.lida.is_(True), Notificacao.criada_em < limite_notificacoes)
         ).rowcount
+        # Sessões vencidas ou revogadas e falhas de login antigas (só servem ao limite de tentativas).
+        tokens = (tokens or 0) + TokenSessaoRepository(self.sessao).apagar_vencidos(limite_tokens)
+        TentativaLoginRepository(self.sessao).apagar_antigas(agora - timedelta(days=1))
         self.sessao.commit()
         return ResultadoRetencao(tokens_apagados=tokens or 0, notificacoes_apagadas=notificacoes or 0)

@@ -2,7 +2,7 @@ import re
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-from app.dtos.base import validar_email_institucional
+from app.dtos.base import RespostaDTO, validar_email_institucional
 
 
 # Senhas: mínimo de 8 caracteres (recomendação NIST SP 800-63B), sem exigir combinações de símbolos.
@@ -16,8 +16,14 @@ class LoginEntrada(BaseModel):
     senha: str = Field(min_length=6, max_length=TAMANHO_MAXIMO_SENHA)
 
 
-class TokenResposta(BaseModel):
+class TokenResposta(RespostaDTO):
     token: str
+    # Opcional para compatibilidade: clientes antigos só leem "token".
+    refresh_token: str | None = None
+
+
+class RenovarSessaoEntrada(BaseModel):
+    refresh_token: str = Field(min_length=20, max_length=200)
 
 
 class CadastroEntrada(BaseModel):

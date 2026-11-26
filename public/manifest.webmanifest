@@ -1,0 +1,16 @@
+{
+  "name": "Uni SOS · Central de Reportes UNIFOR",
+  "short_name": "Uni SOS",
+  "description": "SOS, chamados de manutenção e denúncias no campus da UNIFOR.",
+  "lang": "pt-BR",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f6fb",
+  "theme_color": "#0b2a6f",
+  "icons": [
+    { "src": "/icone-app.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icone-app.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}

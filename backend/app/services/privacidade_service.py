@@ -30,6 +30,7 @@ from app.entities.usuario import Usuario
 from app.repositories.evento_ocorrencia_repository import EventoOcorrenciaRepository
 from app.repositories.notificacao_repository import NotificacaoRepository
 from app.repositories.ocorrencia_repository import OcorrenciaRepository
+from app.repositories.sessao_repository import TokenSessaoRepository
 from app.repositories.token_redefinicao_senha_repository import TokenRedefinicaoSenhaRepository
 from app.repositories.usuario_repository import UsuarioRepository
 from app.services.notificacao_service import AvisarEmTempoReal, NotificacaoService, nao_avisar
@@ -162,6 +163,9 @@ class PrivacidadeService:
         usuario.nome = NOME_ANONIMIZADO
         usuario.email = f"anonimizado-{uuid4()}@{DOMINIO_ANONIMIZADO}"
         usuario.matricula = None
+        usuario.avatar = None
+        TokenSessaoRepository(self.sessao).revogar_todos(usuario.id, _agora())
+        usuario.avatar_tipo = None
         # Hash de uma senha aleatória que ninguém conhece (e que é descartada): nenhuma senha volta a conferir.
         usuario.senha_hash = gerar_hash_senha(secrets.token_urlsafe(32))
         usuario.ativo = False

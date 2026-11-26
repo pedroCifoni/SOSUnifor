@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
-import { Info, MailWarning, Pencil, Search, Trash2, Users, X } from 'lucide-react'
+import { Download, Info, MailWarning, Pencil, Search, Trash2, Users, X } from 'lucide-react'
 import { PedidosExclusao } from '@/components/privacidade/PedidosExclusao'
 import { CarregarMais } from '@/components/ui/CarregarMais'
 import { ConfirmModal } from '@/components/ui/ConfirmModal'
@@ -64,6 +64,7 @@ export function UsuariosPage() {
   const [paraExcluir, setParaExcluir] = useState<Rascunho | null>(null)
   const [salvando, setSalvando] = useState(false)
   const [reenviando, setReenviando] = useState<string | null>(null)
+  const [exportando, setExportando] = useState<'csv' | 'pdf' | null>(null)
 
   const requisicaoRef = useRef(0)
   const campoBuscaRef = useRef<HTMLInputElement>(null)
@@ -271,6 +272,30 @@ export function UsuariosPage() {
     setExcluidosIds((atual) => atual.filter((excluido) => excluido !== id))
   }
 
+  async function exportar(formato: 'csv' | 'pdf') {
+    setExportando(formato)
+    try {
+      const { arquivo, nome } = await usuarioService.exportar(formato, {
+        busca: buscaAtiva || undefined,
+        perfil: perfilFiltro || undefined,
+        situacao,
+      })
+      const url = URL.createObjectURL(arquivo)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = nome ?? `usuarios.${formato}`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      setTimeout(() => URL.revokeObjectURL(url), 1000)
+      toast.sucesso(`Lista de usuários (${formato.toUpperCase()}) baixada.`)
+    } catch (erro) {
+      toast.erro(erro instanceof Error ? erro.message : 'Não foi possível exportar.')
+    } finally {
+      setExportando(null)
+    }
+  }
+
   function limparFiltros() {
     setTermoDigitado('')
     setBuscaAtiva('')
@@ -285,8 +310,8 @@ export function UsuariosPage() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-4 pb-24">
-      {situacao === 'ativos' && (
-        <div className="flex items-center justify-between gap-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        {situacao === 'ativos' ? (
           <p className="text-sm text-muted" aria-live="polite">
             {erroCarregamento
               ? 'Não foi possível carregar'
@@ -294,8 +319,23 @@ export function UsuariosPage() {
                 ? `${totalEncontrado} ${totalEncontrado === 1 ? 'usuário encontrado' : 'usuários encontrados'}${carregando ? ' · Atualizando…' : ''}`
                 : 'Carregando…'}
           </p>
+        ) : (
+          <span />
+        )}
+        <div className="flex gap-2">
+          {(['csv', 'pdf'] as const).map((formato) => (
+            <button
+              key={formato}
+              type="button"
+              onClick={() => void exportar(formato)}
+              disabled={exportando !== null}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line bg-white px-3 text-xs font-semibold text-brand-900 hover:bg-brand-50 disabled:opacity-60"
+            >
+              <Download size={14} /> {exportando === formato ? 'Gerando…' : formato.toUpperCase()}
+            </button>
+          ))}
         </div>
-      )}
+      </div>
 
       <p className="flex items-start gap-2 rounded-xl bg-brand-50 px-3 py-2 text-xs text-brand-900">
         <Info size={14} className="mt-0.5 shrink-0 text-brand-500" aria-hidden />

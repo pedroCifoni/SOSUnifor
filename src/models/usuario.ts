@@ -39,4 +39,5 @@ export interface Credenciais {
 
 export interface LoginResponse {
   token: string
+  refreshToken?: string | null
 }

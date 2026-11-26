@@ -30,8 +30,9 @@ from typing import Any
 from uuid import UUID
 
 from app.core import contexto_requisicao, eventos
-from app.core.excecoes import ErroAplicacao
 from app.core.eventos import Evento
+from app.core.excecoes import ErroAplicacao
+
 
 logger = logging.getLogger(__name__)
 logger_desempenho = logging.getLogger("app.desempenho")
@@ -188,6 +189,8 @@ def entregar(evento: Evento) -> None:
     from app.services.auditoria_service import gravar_evento  # import tardio: evita ciclo core -> services
 
     gravar_evento(evento, "direto")
+    # Sem broker, os observadores (eventos.assinar) recebem o evento no próprio processo.
+    eventos.notificar_localmente(evento)
 
 
 # ---------- aspecto: auditoria ----------
@@ -221,7 +224,8 @@ def auditar(
         try:
             resultado = prosseguir()
         except Exception as erro:
-            _seguro("auditar o erro", lambda: _registrar(ponto, None, "erro", inicio, _descrever_erro(erro)))
+            descricao = _descrever_erro(erro)
+            _seguro("auditar o erro", lambda: _registrar(ponto, None, "erro", inicio, descricao))
             raise
         _seguro("auditar o sucesso", lambda: _registrar(ponto, resultado, "sucesso", inicio, None))
         return resultado
@@ -275,6 +279,7 @@ def publicar_evento(
     ator: str | Extrator | None = None,
     anonimo_se: str | None = None,
     dados: Extrator | None = None,
+    publicar_se: Extrator | None = None,
 ):
     """Advice "around" que publica um evento de domínio DEPOIS que a operação deu certo.
 
@@ -284,7 +289,8 @@ def publicar_evento(
 
     def advice(ponto: PontoDeJuncao, prosseguir: Callable[[], Any]) -> Any:
         resultado = prosseguir()
-        _seguro(f"publicar o evento {tipo}", lambda: _publicar(ponto, resultado))
+        if publicar_se is None or publicar_se(ponto, resultado):
+            _seguro(f"publicar o evento {tipo}", lambda: _publicar(ponto, resultado))
         return resultado
 
     def _publicar(ponto: PontoDeJuncao, resultado: Any) -> None:

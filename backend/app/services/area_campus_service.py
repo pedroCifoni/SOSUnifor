@@ -3,6 +3,7 @@ from uuid import UUID
 
 from sqlalchemy.orm import Session
 
+from app.core.cache import cache
 from app.core.excecoes import NaoEncontradoErro
 from app.dtos.area_campus_dto import AreaCampusEntrada, AreaCampusResposta, LocalizacaoResposta
 from app.entities.area_campus import AreaCampus
@@ -30,6 +31,11 @@ class Localizacao:
         return self.area.nome
 
 
+CHAVE_CACHE_AREAS = "areas_campus:"
+# Curto de propósito: outra réplica que editou uma área tem a mudança visível aqui em até 60 s.
+TTL_CACHE_AREAS_SEGUNDOS = 60
+
+
 class AreaCampusService:
     def __init__(self, sessao: Session) -> None:
         self.sessao = sessao
@@ -43,6 +49,7 @@ class AreaCampusService:
         area = self.areas.adicionar(AreaCampus())
         self._preencher(area, dados)
         self.sessao.commit()
+        cache.invalidar(CHAVE_CACHE_AREAS)
         self.sessao.refresh(area)
         return AreaCampusResposta.de_entidade(area)
 
@@ -50,12 +57,14 @@ class AreaCampusService:
         area = self._buscar(area_id)
         self._preencher(area, dados)
         self.sessao.commit()
+        cache.invalidar(CHAVE_CACHE_AREAS)
         self.sessao.refresh(area)
         return AreaCampusResposta.de_entidade(area)
 
     def excluir(self, area_id: UUID) -> None:
         self._buscar(area_id).ativo = False
         self.sessao.commit()
+        cache.invalidar(CHAVE_CACHE_AREAS)
 
     # ---------- localização ----------
     def identificar(self, latitude: float, longitude: float) -> LocalizacaoResposta:
@@ -73,7 +82,12 @@ class AreaCampusService:
 
     def localizar(self, latitude: float, longitude: float) -> Localizacao:
         """Encontra a área de maior prioridade que contém o ponto e o bloco mais próximo dele."""
-        areas = self.areas.listar_por_prioridade()
+        # Caminho crítico do SOS: os polígonos vêm do cache em vez de uma consulta a cada alerta.
+        areas = cache.obter_ou_calcular(
+            CHAVE_CACHE_AREAS + "por_prioridade",
+            TTL_CACHE_AREAS_SEGUNDOS,
+            lambda: self.areas.copiar_sem_sessao(self.areas.listar_por_prioridade()),
+        )
         limites = [area for area in areas if area.limite_campus]
         dentro_do_campus = any(ponto_esta_dentro_da_area(latitude, longitude, area.coordenadas) for area in limites)
         if not dentro_do_campus:

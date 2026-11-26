@@ -1,6 +1,6 @@
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from app.entities.area_campus import AreaCampus
@@ -26,6 +26,11 @@ class AreaCampusRepository:
     def listar_por_prioridade(self) -> list[AreaCampus]:
         consulta = select(AreaCampus).where(AreaCampus.ativo).order_by(AreaCampus.prioridade.desc(), AreaCampus.nome)
         return list(self.sessao.scalars(consulta))
+
+    def copiar_sem_sessao(self, areas: list[AreaCampus]) -> list[AreaCampus]:
+        """Cópias soltas (sem sessão), seguras para guardar em cache: nunca expiram nem fazem consulta."""
+        colunas = [atributo.key for atributo in inspect(AreaCampus).column_attrs]
+        return [AreaCampus(**{coluna: getattr(area, coluna) for coluna in colunas}) for area in areas]
 
     def existe_limite_ativo(self) -> bool:
         consulta = select(AreaCampus.id).where(AreaCampus.ativo, AreaCampus.limite_campus).limit(1)

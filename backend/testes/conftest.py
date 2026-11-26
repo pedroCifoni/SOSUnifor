@@ -6,6 +6,7 @@ configuração do arquivo .env local nunca seja usada pelos testes.
 
 import os
 
+
 # TESTES_DATABASE_URL permite que execuções em paralelo usem bancos diferentes
 # (ex.: unisos_testes_lgpd), sem uma apagar os dados da outra. O banco precisa existir.
 os.environ["DATABASE_URL"] = os.environ.get(
@@ -31,7 +32,7 @@ from app.main import app
 
 TABELAS_DE_TESTE = (
     "auditoria, notificacoes, eventos_ocorrencia, tokens_redefinicao_senha, tokens_verificacao_email, "
-    "ocorrencias, areas_campus, credentials"
+    "ocorrencias, areas_campus, tokens_sessao, tentativas_login, credentials"
 )
 
 
@@ -60,6 +61,9 @@ def client(preparar_banco_de_testes: None, emails: list[dict[str, str | None]]) 
     """Um banco vazio por teste; o lifespan recria as contas iniciais."""
     with engine.begin() as conexao:
         conexao.execute(text(f"TRUNCATE TABLE {TABELAS_DE_TESTE} RESTART IDENTITY CASCADE"))
+    from app.core.cache import cache
+
+    cache.invalidar()  # o banco foi zerado: nada do teste anterior pode vir do cache
     with TestClient(app, raise_server_exceptions=False) as cliente:
         yield cliente
 

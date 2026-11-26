@@ -14,6 +14,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from app.core import contexto_requisicao
 
+
 logger = logging.getLogger("app.http")
 
 CABECALHO_REQUEST_ID = "X-Request-ID"

@@ -2,6 +2,7 @@
 
 from math import cos, radians, sqrt
 
+
 Coordenada = dict[str, float]
 
 

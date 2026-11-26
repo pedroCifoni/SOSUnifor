@@ -4,7 +4,9 @@ Topologia (declarada por qualquer instância que sobe; as declarações são ide
 
     exchange TOPIC durável "unisos.eventos"
         ├── fila durável "unisos.auditoria"  (binding "#")           → grava a tabela auditoria
-        └── fila durável "unisos.metricas"   (binding "ocorrencia.*") → contadores (por processo) no log
+        ├── fila durável "unisos.metricas"   (binding "ocorrencia.*") → contadores (por processo) no log
+        └── fila durável "unisos.reacoes"    (um binding por assinante) → reações de negócio
+                                              (ex.: "usuario.ativado" → boas-vindas por e-mail e no sino)
     exchange FANOUT durável "unisos.eventos.dlx"
         └── fila durável "unisos.eventos.mortos"  ← mensagens rejeitadas pelos consumidores;
                                                     reprocessada de tempos em tempos (reprocessar_mortos)
@@ -20,8 +22,10 @@ Sem broker, ``publicar`` devolve False e o aspecto grava a auditoria direto no b
 import asyncio
 import logging
 import os
+import re
 import time
 from collections import Counter
+from collections.abc import Callable
 from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID, uuid4
@@ -40,6 +44,7 @@ FILA_AUDITORIA = "unisos.auditoria"
 BINDING_AUDITORIA = "#"
 FILA_METRICAS = "unisos.metricas"
 BINDING_METRICAS = "ocorrencia.*"
+FILA_REACOES = "unisos.reacoes"
 # Quantas mensagens cada consumidor pode ter em mãos sem ack: limita a memória e reparte entre workers.
 PREFETCH = 10
 # Tempo máximo esperando a confirmação do broker antes de cair no fallback.
@@ -65,6 +70,52 @@ class Evento(BaseModel):
     ocorrido_em: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     ator_id: UUID | None = None
     dados: dict[str, Any] = Field(default_factory=dict)
+
+
+# ---------- assinantes (padrão Observer) ----------
+Assinante = Callable[[Evento], None]
+_assinantes: list[tuple[str, Assinante]] = []
+
+
+def assinar(padrao: str) -> Callable[[Assinante], Assinante]:
+    """Registra um observador de eventos de domínio pela routing key (aceita "*" e "#", como no RabbitMQ).
+
+    Com o broker no ar, o observador é chamado pelo consumidor da fila "unisos.reacoes";
+    sem broker, ``notificar_localmente`` o chama no próprio processo (mesmo resultado).
+    """
+
+    def registrar(funcao: Assinante) -> Assinante:
+        if (padrao, funcao) not in _assinantes:
+            _assinantes.append((padrao, funcao))
+        return funcao
+
+    return registrar
+
+
+def padrao_casa(padrao: str, tipo: str) -> bool:
+    """Casamento de routing key no estilo do exchange TOPIC: "*" = uma palavra, "#" = zero ou mais."""
+    expressao = (
+        re.escape(padrao)
+        .replace(r"\.\#", r"(?:\..*)?")  # "a.#" casa com "a" e "a.b.c"
+        .replace(r"\#\.", r"(?:.*\.)?")
+        .replace(r"\#", ".*")
+        .replace(r"\*", r"[^.]+")
+    )
+    expressao = f"^{expressao}$"
+    return re.match(expressao, tipo) is not None
+
+
+def assinantes_de(tipo: str) -> list[Assinante]:
+    return [funcao for padrao, funcao in _assinantes if padrao_casa(padrao, tipo)]
+
+
+def notificar_localmente(evento: Evento) -> None:
+    """Fallback sem broker: entrega o evento aos observadores deste processo. Um erro não afeta os demais."""
+    for assinante in assinantes_de(evento.tipo):
+        try:
+            assinante(evento)
+        except Exception:
+            logger.exception("Assinante %s falhou ao tratar o evento %s.", getattr(assinante, "__name__", assinante), evento.id)
 
 
 _conexao: aio_pika.abc.AbstractRobustConnection | None = None
@@ -105,6 +156,11 @@ async def iniciar(conexao: aio_pika.abc.AbstractRobustConnection | None) -> None
         fila_metricas = await canal_consumo.declare_queue(FILA_METRICAS, durable=True, arguments=argumentos)
         await fila_metricas.bind(exchange, routing_key=BINDING_METRICAS)
         await fila_metricas.consume(consumir_metricas)
+
+        fila_reacoes = await canal_consumo.declare_queue(FILA_REACOES, durable=True, arguments=argumentos)
+        for padrao in sorted({padrao for padrao, _ in _assinantes}):
+            await fila_reacoes.bind(exchange, routing_key=padrao)
+        await fila_reacoes.consume(consumir_reacoes)
 
         _loop = asyncio.get_running_loop()
         _tarefa_reprocessamento = asyncio.create_task(_reprocessar_periodicamente(canal_consumo))
@@ -228,6 +284,19 @@ async def consumir_auditoria(mensagem: aio_pika.abc.AbstractIncomingMessage) -> 
             len(ESPERAS_NOVA_TENTATIVA_SEGUNDOS) + 1,
             FILA_MORTOS,
         )
+        await mensagem.reject(requeue=False)
+        return
+    await mensagem.ack()
+
+
+async def consumir_reacoes(mensagem: aio_pika.abc.AbstractIncomingMessage) -> None:
+    """Entrega o evento aos observadores registrados com ``assinar``. Falha → fila de mortos."""
+    try:
+        evento = Evento.model_validate_json(mensagem.body)
+        for assinante in assinantes_de(evento.tipo):
+            await asyncio.to_thread(assinante, evento)
+    except Exception:
+        logger.exception("Evento %s: falha ao executar as reações; enviado para '%s'.", mensagem.message_id, FILA_MORTOS)
         await mensagem.reject(requeue=False)
         return
     await mensagem.ack()

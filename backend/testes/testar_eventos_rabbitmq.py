@@ -29,6 +29,7 @@ import urllib.parse
 import urllib.request
 from uuid import uuid4
 
+
 API = os.environ.get("API_URL", "http://127.0.0.1:8030")
 RABBITMQ_URL = os.environ.get("RABBITMQ_URL", "amqp://unisos:uni12345@localhost:5672/")
 PAINEL = os.environ.get("RABBITMQ_PAINEL", "http://localhost:15672")

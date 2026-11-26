@@ -1,17 +1,19 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, Query, status
+from fastapi.responses import StreamingResponse
 
 from app.controllers.dependencias import Administrador, UsuarioAtual, usuario_service
+from app.core.exportacao import criar_exportador
 from app.dtos.auth_dto import MensagemResposta
 from app.dtos.usuario_dto import (
     LIMITE_MAXIMO_USUARIOS,
     LIMITE_PADRAO_USUARIOS,
     Perfil,
     ResumoUsuariosResposta,
-    SituacaoConta,
     SegurancaNotificadaResposta,
+    SituacaoConta,
     UsuarioAdminResposta,
     UsuarioAtualizacao,
     UsuarioLoteEntrada,
@@ -55,6 +57,25 @@ def resumir(
     situacao: Annotated[SituacaoConta, Query(description="Contas ativas (padrão) ou desativadas")] = "ativos",
 ) -> ResumoUsuariosResposta:
     return servico.resumir(desativados=situacao == "desativados", busca=busca, perfil=perfil)
+
+
+@router.get("/usuarios/exportar.{formato}")
+def exportar(
+    formato: Literal["csv", "pdf"],
+    _: Administrador,
+    servico: Servico,
+    busca: Annotated[str | None, Query(max_length=150)] = None,
+    perfil: Perfil | None = None,
+    situacao: SituacaoConta = "ativos",
+) -> StreamingResponse:
+    """Exporta a lista de contas (mesmos filtros da tela) em CSV ou PDF."""
+    exportador = criar_exportador(formato)
+    conteudo = servico.exportar(exportador, desativados=situacao == "desativados", busca=busca, perfil=perfil)
+    return StreamingResponse(
+        conteudo,
+        media_type=exportador.media_type,
+        headers={"Content-Disposition": f'attachment; filename="usuarios_{situacao}.{exportador.extensao}"'},
+    )
 
 
 @router.get("/usuarios/segurancas", response_model=list[UsuarioResposta])

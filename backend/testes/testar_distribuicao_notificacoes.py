@@ -12,6 +12,7 @@ from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
+
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))  # permite `import app` rodando da pasta backend
 
 

@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from uuid import uuid4
 
+
 # Permite importar o pacote `app` rodando o arquivo direto da pasta backend.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
@@ -36,6 +37,7 @@ from sqlalchemy.orm import Session  # noqa: E402
 
 from app.core.seguranca import gerar_hash_senha  # noqa: E402
 from app.entities import EventoOcorrencia, Notificacao, Ocorrencia, Usuario  # noqa: E402
+
 
 BANCO_PERMITIDO = "unisos_carga"
 TOTAL_POR_PERFIL = {"usuario": 300, "seguranca": 10, "tecnico": 5}

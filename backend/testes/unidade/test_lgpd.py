@@ -291,8 +291,8 @@ def test_admin_nao_anonimiza_a_si_mesmo_e_so_admin_anonimiza(client: TestClient,
 
 def test_ultimo_admin_nao_pode_ser_anonimizado(client: TestClient, criar_usuario) -> None:
     """Só um administrador ativo: nem outra conta de admin (já desativada) consegue anonimizá-lo."""
-    from app.services.privacidade_service import PrivacidadeService
     from app.core.excecoes import RegraDeNegocioErro
+    from app.services.privacidade_service import PrivacidadeService
 
     desativado = criar_usuario("admin-antigo@unifor.br", perfil="admin", ativo=False)
     with FabricaSessao() as sessao:

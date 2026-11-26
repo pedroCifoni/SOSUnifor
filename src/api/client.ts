@@ -31,12 +31,18 @@ function mensagemDoErro(erro: unknown, status: number): string {
 }
 
 let aoNaoAutorizado: (() => void) | null = null
+let aoRenovar: (() => Promise<boolean>) | null = null
 
 export function setUnauthorizedHandler(handler: (() => void) | null) {
   aoNaoAutorizado = handler
 }
 
-async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+/** Quem sabe renovar a sessão (AuthProvider). Devolve true se há um access token novo. */
+export function setRefreshHandler(handler: (() => Promise<boolean>) | null) {
+  aoRenovar = handler
+}
+
+async function request<T>(method: string, path: string, body?: unknown, jaRenovou = false): Promise<T> {
   const token = tokenStorage.get()
   const res = await fetch(`${API_URL}${path}`, {
     method,
@@ -46,6 +52,11 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
   })
+
+  // Access token vencido: renova uma vez com o refresh token e repete a chamada.
+  if (res.status === 401 && token && !jaRenovou && !path.startsWith('/auth/') && aoRenovar) {
+    if (await aoRenovar()) return request<T>(method, path, body, true)
+  }
 
   if (!res.ok) {
     const erro = await res.json().catch(() => null)
@@ -84,7 +95,9 @@ export const http = {
   },
   async baixarArquivoComNome(url: string): Promise<{ arquivo: Blob; nome: string | null }> {
     const token = tokenStorage.get()
-    const resposta = await fetch(url, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
+    // Caminhos relativos ("/relatorios/...") são da API, não do front-end.
+    const endereco = url.startsWith('/') ? `${API_URL}${url}` : url
+    const resposta = await fetch(endereco, { headers: token ? { Authorization: `Bearer ${token}` } : undefined })
     if (!resposta.ok) {
       const erro = await resposta.json().catch(() => null)
       throw new Error(erro?.detail ?? `Erro ${resposta.status}`)

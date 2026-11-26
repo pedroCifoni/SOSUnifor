@@ -554,7 +554,8 @@ def test_auditoria_paginada_por_cursor_e_filtrada(client: TestClient, token_admi
     resto = client.get(
         "/auditoria", headers=_cabecalho(token_admin), params={"antes_de": ultimo["ocorridoEm"], "antes_id": ultimo["id"]}
     ).json()
-    assert len(resto) == 2 and not {r["id"] for r in resto} & {r["id"] for r in pagina}
+    # 3 cadastros geram 6 registros (auditoria.usuario.cadastrar + evento usuario.criado); 1 já está na 1ª página.
+    assert len(resto) == 5 and not {r["id"] for r in resto} & {r["id"] for r in pagina}
 
     cadastros = client.get(
         "/auditoria", headers=_cabecalho(token_admin), params={"tipo": "auditoria.usuario.cadastrar"}

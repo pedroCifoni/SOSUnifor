@@ -10,6 +10,7 @@ from datetime import datetime, timedelta, timezone
 
 from sqlalchemy.orm import Session
 
+from app.core.aspectos import publicar_evento
 from app.core.config import configuracoes
 from app.core.excecoes import MuitasTentativasErro, RegraDeNegocioErro, SenhaNaoConfereErro
 from app.core.seguranca import conferir_senha
@@ -122,10 +123,18 @@ class VerificacaoEmailService:
             raise SenhaNaoConfereErro(MENSAGEM_SENHA_NAO_CONFERE)
 
         if usuario.email_verificado_em is None:
-            usuario.email_verificado_em = agora
+            self._ativar_conta(usuario, agora)
+        else:
+            self.tokens.invalidar_pendentes(usuario.id, agora)
+            self.sessao.commit()
+        return MensagemResposta(mensagem=MENSAGEM_EMAIL_CONFIRMADO)
+
+    @publicar_evento("usuario.ativado", entidade="usuario", entidade_id="usuario.id", ator="usuario.id")
+    def _ativar_conta(self, usuario: Usuario, agora: datetime) -> None:
+        """Primeira confirmação: a conta passa a valer. O evento dispara as boas-vindas (boas_vindas_service)."""
+        usuario.email_verificado_em = agora
         self.tokens.invalidar_pendentes(usuario.id, agora)
         self.sessao.commit()
-        return MensagemResposta(mensagem=MENSAGEM_EMAIL_CONFIRMADO)
 
     def _emitir_e_enviar(self, usuario: Usuario, agora: datetime) -> None:
         token = self.emitir_token(usuario, agora)

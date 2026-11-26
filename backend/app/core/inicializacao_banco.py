@@ -4,8 +4,8 @@ Ajusta tabelas de versões antigas sem apagar dados, cria as tabelas que faltam
 e cadastra as contas iniciais quando ainda não existem.
 """
 
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
 
 from sqlalchemy import func, inspect, select, text
 from sqlalchemy.orm import Session
@@ -66,6 +66,9 @@ COLUNAS_LGPD = {
         ("termos_versao", "VARCHAR(20)", "VARCHAR(20)"),
         ("exclusao_solicitada_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
         ("anonimizado_em", "TIMESTAMP WITH TIME ZONE", "DATETIME"),
+        # Foto de perfil (GET/PUT /me/avatar).
+        ("avatar", "BYTEA", "BLOB"),
+        ("avatar_tipo", "VARCHAR(20)", "VARCHAR(20)"),
     ],
     "eventos_ocorrencia": [
         ("destinatario_id", "UUID", "CHAR(32)"),

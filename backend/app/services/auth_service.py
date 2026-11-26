@@ -7,11 +7,26 @@ from sqlalchemy.orm import Session
 
 from app.core.aspectos import PontoDeJuncao, auditar
 from app.core.config import configuracoes
-from app.core.excecoes import AcessoNegadoErro, EmailNaoVerificadoErro, NaoAutenticadoErro, RegraDeNegocioErro
+from app.core.excecoes import (
+    AcessoNegadoErro,
+    EmailNaoVerificadoErro,
+    MuitasTentativasErro,
+    NaoAutenticadoErro,
+    RegraDeNegocioErro,
+)
 from app.core.seguranca import conferir_senha, criar_token, gerar_hash_senha, ler_id_do_token
-from app.dtos.auth_dto import EsqueciSenhaEntrada, LoginEntrada, MensagemResposta, RedefinirSenhaEntrada, TokenResposta
+from app.dtos.auth_dto import (
+    EsqueciSenhaEntrada,
+    LoginEntrada,
+    MensagemResposta,
+    RedefinirSenhaEntrada,
+    RenovarSessaoEntrada,
+    TokenResposta,
+)
+from app.entities.sessao import TokenSessao
 from app.entities.token_redefinicao_senha import TokenRedefinicaoSenha
 from app.entities.usuario import Usuario
+from app.repositories.sessao_repository import TentativaLoginRepository, TokenSessaoRepository
 from app.repositories.token_redefinicao_senha_repository import TokenRedefinicaoSenhaRepository
 from app.repositories.token_verificacao_email_repository import TokenVerificacaoEmailRepository
 from app.repositories.usuario_repository import UsuarioRepository
@@ -30,6 +45,8 @@ MENSAGEM_PEDIDO_REDEFINICAO = (
     "Se o e-mail estiver cadastrado, você receberá em instantes um link para criar uma nova senha."
 )
 MENSAGEM_LINK_INVALIDO = "Este link de redefinição é inválido ou expirou. Peça um novo na tela de login."
+MENSAGEM_MUITAS_TENTATIVAS = "Muitas tentativas de login. Aguarde alguns minutos e tente de novo."
+MENSAGEM_SESSAO_INVALIDA = "Sessão expirada. Entre novamente."
 MENSAGEM_EMAIL_NAO_VERIFICADO = (
     "Seu e-mail ainda não foi confirmado. Use o link que enviamos para a sua caixa de entrada ou peça um novo."
 )
@@ -49,20 +66,76 @@ class AuthService:
         self.usuarios = UsuarioRepository(sessao)
         self.tokens_redefinicao = TokenRedefinicaoSenhaRepository(sessao)
         self.tokens_verificacao = TokenVerificacaoEmailRepository(sessao)
+        self.tokens_sessao = TokenSessaoRepository(sessao)
+        self.tentativas = TentativaLoginRepository(sessao)
         self.emails = emails or EmailService()
 
-    def entrar(self, dados: LoginEntrada) -> TokenResposta:
+    def entrar(self, dados: LoginEntrada, ip: str | None = None) -> TokenResposta:
+        agora = datetime.now(timezone.utc)
+        email_hash = _hash_do_token(dados.email.lower().strip())
+        # Força bruta: barra antes do Argon2, por e-mail (uma conta) e por IP (várias contas).
+        desde = agora - timedelta(minutes=configuracoes.login_janela_falhas_minutos)
+        if self.tentativas.contar_por_email(email_hash, desde) >= configuracoes.login_max_falhas_por_email or (
+            ip and self.tentativas.contar_por_ip(ip, desde) >= configuracoes.login_max_falhas_por_ip
+        ):
+            raise MuitasTentativasErro(MENSAGEM_MUITAS_TENTATIVAS)
+
         usuario = self.usuarios.buscar_por_email(dados.email)
         # Devolve a conexão ao pool ANTES do Argon2: o hash é lento de propósito (e mais ainda com a
         # CPU disputada) e não precisa do banco. Segurá-la esgotava o pool sob muitos logins.
         # close() não expira os atributos já carregados, então `usuario` continua legível.
         self.sessao.close()
         if usuario is None or not usuario.ativo or not conferir_senha(dados.senha, usuario.senha_hash):
+            self.tentativas.registrar(email_hash, ip, agora)
+            self.sessao.commit()
             raise NaoAutenticadoErro("E-mail ou senha inválidos.")
         # Só depois de a senha conferir: assim esta resposta não ajuda ninguém a descobrir senhas.
         if usuario.email_verificado_em is None:
             raise EmailNaoVerificadoErro(MENSAGEM_EMAIL_NAO_VERIFICADO)
-        return TokenResposta(token=criar_token(usuario))
+        self.tentativas.limpar_do_email(email_hash)
+        refresh_token = self._emitir_refresh_token(usuario.id, agora)
+        self.sessao.commit()
+        return TokenResposta(token=criar_token(usuario), refresh_token=refresh_token)
+
+    # ---------- sessão (refresh token com rotação) ----------
+    def _emitir_refresh_token(self, usuario_id: UUID, agora: datetime) -> str:
+        token = secrets.token_urlsafe(32)
+        self.tokens_sessao.adicionar(
+            TokenSessao(
+                usuario_id=usuario_id,
+                token_hash=_hash_do_token(token),
+                criado_em=agora,
+                expira_em=agora + timedelta(days=configuracoes.refresh_token_expire_dias),
+            )
+        )
+        return token
+
+    def renovar(self, dados: RenovarSessaoEntrada) -> TokenResposta:
+        """Troca um refresh token válido por um novo par de tokens (o antigo deixa de valer)."""
+        agora = datetime.now(timezone.utc)
+        registro = self.tokens_sessao.buscar_por_hash_para_uso(_hash_do_token(dados.refresh_token))
+        if registro is None or registro.expira_em <= agora:
+            raise NaoAutenticadoErro(MENSAGEM_SESSAO_INVALIDA)
+        if registro.revogado_em is not None:
+            # Token já usado de novo: alguém tem uma cópia. Encerra todas as sessões da conta.
+            self.tokens_sessao.revogar_todos(registro.usuario_id, agora)
+            self.sessao.commit()
+            raise NaoAutenticadoErro(MENSAGEM_SESSAO_INVALIDA)
+        usuario = self.usuarios.buscar_por_id(registro.usuario_id)
+        if usuario is None or not usuario.ativo or usuario.email_verificado_em is None:
+            raise NaoAutenticadoErro(MENSAGEM_SESSAO_INVALIDA)
+        registro.revogado_em = agora
+        novo = self._emitir_refresh_token(usuario.id, agora)
+        self.sessao.commit()
+        # O access token novo traz nome e perfil atualizados (ex.: depois de editar o perfil).
+        return TokenResposta(token=criar_token(usuario), refresh_token=novo)
+
+    def sair(self, dados: RenovarSessaoEntrada) -> None:
+        """Logout: revoga o refresh token desta sessão. Idempotente e sem revelar se o token existia."""
+        registro = self.tokens_sessao.buscar_por_hash_para_uso(_hash_do_token(dados.refresh_token))
+        if registro is not None and registro.revogado_em is None:
+            registro.revogado_em = datetime.now(timezone.utc)
+            self.sessao.commit()
 
     # ---------- esqueci minha senha ----------
     def solicitar_redefinicao_senha(self, dados: EsqueciSenhaEntrada) -> MensagemResposta:
@@ -111,6 +184,8 @@ class AuthService:
 
         usuario.senha_hash = gerar_hash_senha(dados.nova_senha)
         self.tokens_redefinicao.invalidar_pendentes(usuario.id, agora)
+        # Senha nova: as sessões abertas (talvez de quem descobriu a antiga) deixam de renovar.
+        self.tokens_sessao.revogar_todos(usuario.id, agora)
         # O link chegou à caixa de entrada da conta, então também comprova que o e-mail é dela.
         if usuario.email_verificado_em is None:
             usuario.email_verificado_em = agora

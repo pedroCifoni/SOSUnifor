@@ -1,5 +1,5 @@
-from datetime import datetime
 import unicodedata
+from datetime import datetime
 from uuid import UUID
 
 from sqlalchemy import func, or_, select
@@ -74,6 +74,14 @@ class UsuarioRepository:
         consulta = self._aplicar_filtros(select(Usuario), desativados=desativados, busca=busca, perfil=perfil)
         consulta = consulta.order_by(Usuario.nome, Usuario.id).offset(deslocamento).limit(limite)
         return list(self.sessao.scalars(consulta))
+
+    def iterar_para_exportacao(
+        self, *, desativados: bool = False, busca: str | None = None, perfil: str | None = None
+    ):
+        """Todas as contas do filtro, em ordem de nome, lidas em lotes (sem carregar as fotos)."""
+        consulta = self._aplicar_filtros(select(Usuario), desativados=desativados, busca=busca, perfil=perfil)
+        consulta = consulta.order_by(Usuario.nome, Usuario.id).execution_options(yield_per=500)
+        yield from self.sessao.scalars(consulta)
 
     def contar(self, *, desativados: bool = False, busca: str | None = None, perfil: str | None = None) -> int:
         consulta = self._aplicar_filtros(
